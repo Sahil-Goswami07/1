@@ -17,7 +17,7 @@ export default function Hero() {
               Verify Now
             </a>
             <a href="#learn" className="inline-flex items-center justify-center rounded-lg bg-white text-slate-900 px-5 py-3 font-semibold ring-1 ring-slate-200 hover:bg-slate-50">
-              About this
+              Learn More
             </a>
           </div>
         </div>
