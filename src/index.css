@@ -2,6 +2,8 @@
 
 :root {
 	--bg: 245 247 252; /* soft blue background */
+	--primary: #0B5FFF;
+	--secondary: #00C48C;
 }
 
 html, body, #root { height: 100%; }
@@ -13,3 +15,6 @@ body {
 }
 
 /* No custom utilities; use Tailwind classes directly in JSX */
+
+/* Focus styles for accessibility */
+:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }

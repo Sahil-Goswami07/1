@@ -1,23 +1,23 @@
-export default function Hero() {
+export default function Hero({
+  headline = 'Secure, Verified,\nTrusted Academic Certificates',
+  subheadline = "AI + Blockchain + Database powered authentication for Rajasthan's education ecosystem.",
+  ctaPrimary = { label: 'Verify Now', href: '#verify' },
+  ctaSecondary = { label: 'Learn More', href: '#learn' },
+}) {
   return (
     <section className="pt-16 pb-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid lg:grid-cols-2 gap-10 items-center">
         <div>
-          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-900">
-            Secure, Verified,
-            <br />
-            Trusted Academic Certificates
+          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-900 whitespace-pre-line">
+            {headline}
           </h1>
-          <p className="mt-4 text-slate-600 text-lg">
-            AI + Blockchain + Database powered authentication for Rajasthan's
-            education ecosystem.
-          </p>
+          <p className="mt-4 text-slate-600 text-lg">{subheadline}</p>
           <div className="mt-6 flex gap-3">
-            <a href="#verify" className="inline-flex items-center justify-center rounded-lg bg-blue-600 text-white px-5 py-3 font-semibold shadow-sm hover:bg-blue-700">
-              Verify Now
+            <a href={ctaPrimary?.href || '#'} className="inline-flex items-center justify-center rounded-lg bg-blue-600 text-white px-5 py-3 font-semibold shadow-sm hover:bg-blue-700">
+              {ctaPrimary?.label || 'Get Started'}
             </a>
-            <a href="#learn" className="inline-flex items-center justify-center rounded-lg bg-white text-slate-900 px-5 py-3 font-semibold ring-1 ring-slate-200 hover:bg-slate-50">
-              Learn More
+            <a href={ctaSecondary?.href || '#'} className="inline-flex items-center justify-center rounded-lg bg-white text-slate-900 px-5 py-3 font-semibold ring-1 ring-slate-200 hover:bg-slate-50">
+              {ctaSecondary?.label || 'Learn More'}
             </a>
           </div>
         </div>
