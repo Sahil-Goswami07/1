@@ -32,7 +32,7 @@ export default function Demo() {
               <li>Risk Score: heuristic number based on filename keywords</li>
               <li>Reasons: brief explanation for the score</li>
               <li>Registry Match: simulated true/false</li>
-              <li>Download Report: disabled in demo</li>
+              <li>Download Report: disable in demo</li>
             </ul>
           </div>
         </div>
