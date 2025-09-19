@@ -18,6 +18,8 @@ export const site = {
     { to: '/about', label: 'About' },
     { to: '/roadmap', label: 'Roadmap' },
     { to: '/contact', label: 'Contact' },
+    { to: '/admin', label: 'Admin' },
+    { to: '/university', label: 'University' },
   ],
   home: {
     hero: {

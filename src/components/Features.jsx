@@ -1,100 +1,76 @@
-function Feature({ icon, title }) {
+import React from 'react';
+
+const Feature = ({ icon, title, description }) => (
+  <div>
+    <div>
+      <span className="flex items-center justify-center h-12 w-12 rounded-md bg-blue-600 text-white">
+        {icon}
+      </span>
+    </div>
+    <div className="mt-5">
+      <h3 className="text-lg font-medium text-gray-900">{title}</h3>
+      <p className="mt-2 text-base text-gray-500">{description}</p>
+    </div>
+  </div>
+);
+
+export default function Features() {
+  const icons = {
+    security: (
+      <svg className="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+      </svg>
+    ),
+    legacy: (
+      <svg className="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+      </svg>
+    ),
+    ai: (
+      <svg className="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+      </svg>
+    ),
+    coverage: (
+      <svg className="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2h8a2 2 0 002-2v-1a2 2 0 012-2h1.945M7.737 16.95l.263.95m0 0a5.25 5.25 0 005.033 0m-5.033 0l.263-.95m-3.368-3.368l.95.263m0 0a5.25 5.25 0 000 5.033m0-5.033l-.95.263m10.092 0l-.95-.263m0 0a5.25 5.25 0 000-5.033m0 5.033l.95-.263" />
+      </svg>
+    ),
+  };
+
+  const features = [
+    {
+      icon: icons.security,
+      title: 'Blockchain Security',
+      description: 'Every verification is anchored to a public or private blockchain, creating a tamper-proof audit trail.',
+    },
+    {
+      icon: icons.legacy,
+      title: 'Legacy Certificate Support',
+      description: 'Our AI can digitize and verify older, paper-based certificates with high accuracy.',
+    },
+    {
+      icon: icons.ai,
+      title: 'AI Anomaly Detection',
+      description: 'Machine learning models detect subtle signs of digital tampering and forgery that the human eye might miss.',
+    },
+    {
+      icon: icons.coverage,
+      title: 'State-wide Coverage',
+      description: 'We partner with government bodies and universities to provide comprehensive verification across the entire state.',
+    },
+  ];
+
   return (
-    <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-      <div className="flex items-center gap-3">
-        <div className="h-10 w-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-          {icon}
+    <div className="py-12 bg-white">
+      <div className="max-w-xl mx-auto px-4 sm:px-6 lg:max-w-7xl lg:px-8">
+        <h2 className="sr-only">A better way to send money.</h2>
+        <div className="space-y-10 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-8">
+          {features.map((feature) => (
+            <Feature key={feature.title} {...feature} />
+          ))}
         </div>
-        <p className="font-medium text-slate-900">{title}</p>
       </div>
     </div>
-  )
-}
-
-export function Features() {
-  const icon = (path) => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">{path}</svg>
-  )
-  const items = [
-    { title: 'Blockchain Security', icon: icon(<path d="M3 7l9-5 9 5-9 5-9-5zm9 7l9-5v8l-9 5-9-5v-8l9 5z"/>) },
-    { title: 'Legacy Certificate Support', icon: icon(<path d="M5 3h10l4 4v14H5zM15 3v4h4"/>) },
-    { title: 'AI Anomaly Detection', icon: icon(<path d="M12 3a9 9 0 100 18 9 9 0 000-18zm-1 5h2v6h-2zm0 8h2v2h-2z"/>) },
-    { title: 'State-wide Coverage', icon: icon(<path d="M3 7l6-4 6 4v10l-6 4-6-4z"/>) },
-    { title: 'Analytics', icon: icon(<path d="M5 19V8h2v11H5zm6 0V5h2v14h-2zm6 0v-7h2v7h-2z"/>) },
-  ]
-  return (
-    <section className="py-2">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h2 className="text-xl font-semibold text-slate-900">Features</h2>
-        <div className="mt-4 grid sm:grid-cols-5 gap-4">
-          {items.map((f) => <Feature key={f.title} {...f} />)}
-        </div>
-      </div>
-    </section>
-  )
-}
-
-export function Stats() {
-  const stats = [
-    { value: '200+', label: 'Institutions Onboarded' },
-    { value: '1.5M+', label: 'Certificates Verified' },
-    { value: '30%', label: 'Gap Still Offline' },
-  ]
-  return (
-    <section className="py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid sm:grid-cols-3 gap-6">
-        {stats.map((s) => (
-          <div key={s.label} className="text-center">
-            <div className="text-3xl font-extrabold text-slate-900">{s.value}</div>
-            <div className="text-slate-600 mt-1">{s.label}</div>
-          </div>
-        ))}
-      </div>
-    </section>
-  )
-}
-
-export function Logos() {
-  const items = ['RTU', 'MLSU', 'RUHS', 'Jaipur']
-  return (
-    <section className="py-4">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {items.map((name) => (
-          <div key={name} className="rounded-xl bg-white p-4 text-center font-semibold text-slate-700 ring-1 ring-slate-200">
-            {name}
-          </div>
-        ))}
-      </div>
-    </section>
-  )
-}
-
-export function Testimonials() {
-  const items = [
-    {
-      name: 'Priya Sharma', role: 'Student', text: 'This platform gave me instant verification for my job application abroad.',
-    },
-    {
-      name: 'Rohit Singh', role: 'Recruiter', text: 'Saved us from hiring risks – we can now trust verified degrees.',
-    },
-  ]
-  return (
-    <section className="py-8">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 grid sm:grid-cols-2 gap-6">
-        {items.map((t) => (
-          <div key={t.name} className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-            <div className="flex items-center gap-4">
-              <div className="h-12 w-12 rounded-full bg-slate-200" />
-              <div>
-                <p className="font-semibold text-slate-900">{t.name}</p>
-                <p className="text-sm text-slate-600">{t.role}</p>
-              </div>
-            </div>
-            <p className="mt-4 text-slate-700">{t.text}</p>
-            <div className="mt-3 text-amber-400">★★★★★</div>
-          </div>
-        ))}
-      </div>
-    </section>
-  )
+  );
 }

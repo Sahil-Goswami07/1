@@ -1,34 +1,59 @@
 import { Routes, Route } from 'react-router-dom'
-import NavBar from './components/NavBar'
 import Home from './pages/Home'
 import Demo from './pages/Demo'
 import SimplePage from './pages/SimplePage'
+import AdminDashboard from './pages/AdminDashboard'
+import UniversityDashboard from './pages/UniversityDashboard'
+import MainLayout from './layouts/MainLayout'
+import DashboardLayout from './layouts/DashboardLayout'
 
 export default function App() {
   return (
-    <div>
-      <NavBar />
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/demo" element={<Demo />} />
-        <Route path="/features" element={<SimplePage title="Features" />} />
-        <Route path="/tech-specs" element={<SimplePage title="Technical Specifications" />} />
-        <Route path="/api" element={<SimplePage title="API Documentation" />} />
-        <Route path="/about" element={<SimplePage title="About" />} />
-        <Route path="/roadmap" element={<SimplePage title="Roadmap" />} />
-        <Route path="/contact" element={<SimplePage title="Contact & Request Pilot" />} />
-        <Route path="*" element={<SimplePage title="Not Found">The page you’re looking for doesn’t exist.</SimplePage>} />
-      </Routes>
-      <footer className="py-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-slate-600">
-          <p>© {new Date().getFullYear()} EduAuth. All rights reserved.</p>
-          <div className="flex gap-4">
-            <a className="hover:text-slate-900" href="#">Privacy</a>
-            <a className="hover:text-slate-900" href="#">Terms</a>
-            <a className="hover:text-slate-900" href="#">Contact</a>
-          </div>
-        </div>
-      </footer>
-    </div>
+    <Routes>
+      <Route
+        path="/"
+        element={<MainLayout><Home /></MainLayout>}
+      />
+      <Route
+        path="/demo"
+        element={<MainLayout><Demo /></MainLayout>}
+      />
+      <Route
+        path="/features"
+        element={<MainLayout><SimplePage title="Features" /></MainLayout>}
+      />
+      <Route
+        path="/tech-specs"
+        element={<MainLayout><SimplePage title="Technical Specifications" /></MainLayout>}
+      />
+      <Route
+        path="/api"
+        element={<MainLayout><SimplePage title="API Documentation" /></MainLayout>}
+      />
+      <Route
+        path="/about"
+        element={<MainLayout><SimplePage title="About" /></MainLayout>}
+      />
+      <Route
+        path="/roadmap"
+        element={<MainLayout><SimplePage title="Roadmap" /></MainLayout>}
+      />
+      <Route
+        path="/contact"
+        element={<MainLayout><SimplePage title="Contact & Request Pilot" /></MainLayout>}
+      />
+      <Route
+        path="/admin"
+        element={<DashboardLayout><AdminDashboard /></DashboardLayout>}
+      />
+      <Route
+        path="/university"
+        element={<DashboardLayout><UniversityDashboard /></DashboardLayout>}
+      />
+      <Route
+        path="*"
+        element={<MainLayout><SimplePage title="Not Found">The page you’re looking for doesn’t exist.</SimplePage></MainLayout>}
+      />
+    </Routes>
   )
 }
