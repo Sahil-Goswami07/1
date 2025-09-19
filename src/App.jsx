@@ -34,10 +34,10 @@ export default function App() {
         path="/about"
         element={<MainLayout><SimplePage title="About" /></MainLayout>}
       />
-      <Route
+      {/* <Route
         path="/roadmap"
         element={<MainLayout><SimplePage title="Roadmap" /></MainLayout>}
-      />
+      /> */}
       <Route
         path="/contact"
         element={<MainLayout><SimplePage title="Contact & Request Pilot" /></MainLayout>}
