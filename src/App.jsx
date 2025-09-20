@@ -26,10 +26,10 @@ export default function App() {
         path="/tech-specs"
         element={<MainLayout><SimplePage title="Technical Specifications" /></MainLayout>}
       />
-      {/* <Route
+      <Route
         path="/api"
         element={<MainLayout><SimplePage title="API Documentation" /></MainLayout>}
-      /> */}
+      />
       <Route
         path="/about"
         element={<MainLayout><SimplePage title="About" /></MainLayout>}
