@@ -12,12 +12,7 @@ export const site = {
   nav: [
     { to: '/', label: 'Home' },
     { to: '/demo', label: 'Demo' },
-    { to: '/features', label: 'Features' },
-    { to: '/tech-specs', label: 'Tech Specs' },
-    { to: '/api', label: 'API' },
-    { to: '/about', label: 'About' },
-    { to: '/roadmap', label: 'Roadmap' },
-    { to: '/contact', label: 'Contact' },
+    { to: '/upload', label: 'Upload' },
     { to: '/admin', label: 'Admin' },
     { to: '/university', label: 'University' },
   ],
@@ -26,7 +21,7 @@ export const site = {
       headline: 'Protecting academic integrity — one certificate at a time',
       subheadline: 'AI + OCR + Cryptographic verification for new and legacy certificates. Mobile-first. Government-ready.',
       ctaPrimary: { label: 'Try Demo', href: '/demo' },
-      ctaSecondary: { label: 'Request Pilot', href: '/contact' },
+      ctaSecondary: { label: 'Upload', href: '/upload' },
     },
   },
   demo: {

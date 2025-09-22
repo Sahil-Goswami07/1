@@ -9,17 +9,27 @@ export default function NavBar() {
           <span className="inline-block h-6 w-6 rounded-md" style={{ background: `linear-gradient(135deg, ${site.colors.primary}, ${site.colors.secondary})` }} />
           <span>EduAuth</span>
         </Link>
-        <nav className="hidden md:flex items-center gap-5 text-sm text-slate-700">
-          {site.nav.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) => isActive ? 'text-slate-900 font-semibold' : 'hover:text-slate-900'}
-            >
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
+          <nav className="hidden md:flex items-center gap-5 text-sm text-slate-700">
+            <NavLink to="/" className={({ isActive }) => isActive ? 'text-slate-900 font-semibold' : 'hover:text-slate-900'}>Home</NavLink>
+            <NavLink to="/demo" className={({ isActive }) => isActive ? 'text-slate-900 font-semibold' : 'hover:text-slate-900'}>Demo</NavLink>
+            <NavLink to="/upload" className={({ isActive }) => isActive ? 'text-slate-900 font-semibold' : 'hover:text-slate-900'}>Upload</NavLink>
+            <NavLink to="/admin" className={({ isActive }) => isActive ? 'text-slate-900 font-semibold' : 'hover:text-slate-900'}>Admin</NavLink>
+            <NavLink to="/university" className={({ isActive }) => isActive ? 'text-slate-900 font-semibold' : 'hover:text-slate-900'}>University</NavLink>
+          </nav>
+        <div className="hidden md:flex items-center gap-2">
+          <Link
+            to="/upload"
+            className="inline-flex items-center justify-center rounded-md border border-slate-300 text-slate-700 text-sm font-semibold px-3 py-1.5 hover:bg-slate-50"
+          >
+            Upload
+          </Link>
+          <Link
+            to="/demo"
+            className="inline-flex items-center justify-center rounded-md bg-blue-600 text-white text-sm font-semibold px-3 py-1.5 hover:bg-blue-700"
+          >
+            Try Demo
+          </Link>
+        </div>
         <div className="md:hidden" />
       </div>
     </header>

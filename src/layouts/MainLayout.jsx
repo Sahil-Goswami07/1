@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import NavBar from '../components/NavBar';
 
 const MainLayout = ({ children }) => {
@@ -10,9 +11,9 @@ const MainLayout = ({ children }) => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-slate-600">
           <p>© {new Date().getFullYear()} EduAuth. All rights reserved.</p>
           <div className="flex gap-4">
-            <a className="hover:text-slate-900" href="#">Privacy</a>
-            <a className="hover:text-slate-900" href="#">Terms</a>
-            <a className="hover:text-slate-900" href="#">Contact</a>
+            <Link className="hover:text-slate-900" to="/about">Privacy</Link>
+            <Link className="hover:text-slate-900" to="/about">Terms</Link>
+            <Link className="hover:text-slate-900" to="/contact">Contact</Link>
           </div>
         </div>
       </footer>
