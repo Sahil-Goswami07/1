@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 
 export default function Hero({
   headline = 'Secure, Verified, Trusted Academic Certificates',
-  subheadline = "AI + Blockchain + Database powered authentication for Rajasthan's education ecosystem.",
+  subheadline = "AI + Blockchain + Database powered authentication for Jharkhand's education ecosystem.",
   ctaPrimary = { label: 'Verify Now', href: '#verify' },
   ctaSecondary = { label: 'Learn More', href: '#how-it-works' },
 }) {
