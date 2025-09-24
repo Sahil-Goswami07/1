@@ -9,7 +9,7 @@ export const verifyFileMiddleware = fileUpload({ useTempFiles: true, tempFileDir
 
 export async function verifyCertificate(req, res) {
   try {
-    let { certNo, rollNo, marks, graduationYear } = req.body;
+  let { certNo, rollNo, marks, graduationYear } = req.body;
     let ocr = null;
     if (req.files && req.files.certificate) {
       ocr = await runOCR(req.files.certificate);
@@ -19,10 +19,11 @@ export async function verifyCertificate(req, res) {
     }
   if (!certNo || !rollNo) return res.status(400).json({ error: 'certNo and rollNo required (either sent or derivable from OCR / enrollment fallback)' });
     const cert = await Certificate.findOne({ certNo }).populate('studentId');
-    const reasons = [];
-    const fieldsMatched = [];
-    const fieldsMismatched = [];
-    let score = 0;
+  const reasons = [];
+  const fieldsMatched = [];
+  const fieldsMismatched = [];
+  const scoreBreakdown = {};
+  let score = 0;
     if (!cert) {
       reasons.push('Certificate not found');
     }
@@ -30,7 +31,7 @@ export async function verifyCertificate(req, res) {
       // Roll number match (mandatory)
       if (cert.studentId && cert.studentId.rollNo === rollNo) {
         fieldsMatched.push('rollNo');
-        score += 50; // base weight for correct identity linkage
+        scoreBreakdown.rollNo = 50; score += 50; // base weight
       } else {
         fieldsMismatched.push('rollNo');
         reasons.push('Roll number mismatch');
@@ -41,7 +42,7 @@ export async function verifyCertificate(req, res) {
       if (storedGrad) {
         if (!graduationYear || graduationYear === storedGrad) {
           fieldsMatched.push('graduationYear');
-          score += 15;
+            scoreBreakdown.graduationYear = 15; score += 15;
         } else {
           fieldsMismatched.push('graduationYear');
           reasons.push('Graduation year mismatch');
@@ -53,22 +54,34 @@ export async function verifyCertificate(req, res) {
         if (!isNaN(suppliedMarks) && cert.marksPercent != null) {
           if (Math.abs(suppliedMarks - cert.marksPercent) <= 1) { // allow small OCR rounding difference
             fieldsMatched.push('marks');
-            score += 25;
+            scoreBreakdown.marks = 25; score += 25;
           } else {
             fieldsMismatched.push('marks');
             reasons.push('Marks mismatch');
           }
         }
       } else if (cert.marksPercent != null) {
-        // We still give partial score for having stored marks even if not supplied (context reliability)
-        score += 10;
+        scoreBreakdown.marksPresence = 10; score += 10; // partial
+      }
+      // Name matching (OCR candidateName vs stored student name) - loose normalization
+      if (cert.studentId && ocr && ocr.candidateName && ocr.candidateName !== 'Unknown') {
+        const norm = s => s.replace(/[^A-Z]/gi,'').toUpperCase();
+        const oName = norm(ocr.candidateName);
+        const sName = norm(cert.studentId.name || '');
+        if (oName && sName && (oName === sName || oName.includes(sName) || sName.includes(oName))) {
+          fieldsMatched.push('name');
+          scoreBreakdown.name = 10; score += 10;
+        } else {
+          fieldsMismatched.push('name');
+          reasons.push('Name mismatch');
+        }
       }
       // Issue date heuristic if OCR extracted a date (not implemented yet – placeholder for future)
     }
     // Compute final status threshold
     const status = cert && score >= 50 && fieldsMismatched.length === 0 ? 'verified' : (cert ? 'partial' : 'failed');
-    await VerificationLog.create({ certNo, status, score, reasons, universityId: cert ? cert.universityId : undefined });
-    res.json({ status, score, reasons, fieldsMatched, fieldsMismatched, ocr, certificate: cert ? {
+    await VerificationLog.create({ certNo, status, score, reasons, fieldsMatched, fieldsMismatched, scoreBreakdown, ocrName: ocr ? ocr.candidateName : undefined, universityId: cert ? cert.universityId : undefined });
+    res.json({ status, score, reasons, fieldsMatched, fieldsMismatched, scoreBreakdown, ocr, certificate: cert ? {
       certNo: cert.certNo,
       issueDate: cert.issueDate,
       marks: cert.marksPercent,

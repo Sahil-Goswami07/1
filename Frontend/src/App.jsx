@@ -16,6 +16,7 @@ import UniversityDashboard from './pages/UniversityDashboard'
 import MainLayout from './layouts/MainLayout'
 import DashboardLayout from './layouts/DashboardLayout'
 import CertificateUpload from './components/certificateUpload'
+import Verify from './pages/Verify.jsx'
 import UniversityApply from './pages/UniversityApply.jsx'
 
 export default function App() {
@@ -29,7 +30,7 @@ export default function App() {
       />
       <Route
         path="/verify"
-        element={<MainLayout><CertificateUpload/></MainLayout>} // <-- CertificateUpload page
+        element={<MainLayout><Verify /></MainLayout>}
       />
       {/* Simplified: removed Contact/Roadmap/etc. */}
 

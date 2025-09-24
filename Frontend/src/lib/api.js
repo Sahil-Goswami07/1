@@ -53,3 +53,15 @@ export async function fetchRecentLogs(token) {
   return handleResponse(res);
 }
 
+export async function apiVerify({ file, certNo, rollNo, marks, graduationYear }, token) {
+  const form = new FormData();
+  if (file) form.append('certificate', file);
+  if (certNo) form.append('certNo', certNo);
+  if (rollNo) form.append('rollNo', rollNo);
+  if (marks) form.append('marks', marks);
+  if (graduationYear) form.append('graduationYear', graduationYear);
+  const headers = token ? { Authorization: 'Bearer ' + token } : {};
+  const res = await fetch(`${BASE}/api/verify`, { method: 'POST', body: form, headers });
+  return handleResponse(res);
+}
+
