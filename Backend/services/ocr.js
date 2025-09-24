@@ -76,6 +76,17 @@ export async function runOCR(file) {
     });
   }
 
+  // Aggregate marks (simple sum of both columns)
+  let totalMarks = 0;
+  let totalComponents = 0;
+  for (const c of courses) {
+    if (!isNaN(c.marks1)) { totalMarks += c.marks1; totalComponents++; }
+    if (!isNaN(c.marks2)) { totalMarks += c.marks2; totalComponents++; }
+  }
+  const averageComponent = totalComponents ? totalMarks / totalComponents : 0;
+  // For percentage we can approximate using marks2 (endterm) weight heavier, but for now just average scaled to 100 if needed
+  const percent = averageComponent; // placeholder interpretation; adjust once max per component known
+
   return {
     candidateName,
     collegeName,
@@ -84,8 +95,8 @@ export async function runOCR(file) {
     courses,
     fullText: text,
     certId: 'Unknown',
-    marks: 0,
-    maxMarks: 100,
+  marks: percent,
+  maxMarks: 100,
     sealPosition: { x: 0.35, y: 0.85 },
     templateSeal: { x: 0.30, y: 0.80 },
     createdWith: 'Unknown'

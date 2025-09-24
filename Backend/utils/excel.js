@@ -43,7 +43,19 @@ export async function importExcel(buffer, universityId) {
     }
   }
   // Upsert logic simplified: insertMany ignore duplicates via ordered:false
-  if (students.length) await Student.insertMany(students, { ordered: false }).catch(()=>{});
+  let insertedStudents = 0; let duplicateStudents = 0;
+  if (students.length) {
+    try {
+      const res = await Student.insertMany(students, { ordered: false });
+      insertedStudents = res.length;
+    } catch (e) {
+      // Mongoose bulk insert with ordered:false still throws but partial docs inserted.
+      if (e.writeErrors) {
+        insertedStudents = students.length - e.writeErrors.length;
+        duplicateStudents = e.writeErrors.length;
+      }
+    }
+  }
   // Need studentId for certificates => fetch by rollNo mapping
   const existingStudents = await Student.find({ universityId, rollNo: { $in: students.map(s=>s.rollNo) } });
   const studentMap = new Map(existingStudents.map(s => [s.rollNo, s._id]));
@@ -55,6 +67,17 @@ export async function importExcel(buffer, universityId) {
     delete c.rollNo; // cleanup
   }
   const finalCerts = certs.filter(c => c.studentId && c.certNo);
-  if (finalCerts.length) await Certificate.insertMany(finalCerts, { ordered: false }).catch(()=>{});
-  return { students: students.length, certificates: finalCerts.length, skippedCerts };
+  let insertedCerts = 0; let duplicateCerts = 0;
+  if (finalCerts.length) {
+    try {
+      const res = await Certificate.insertMany(finalCerts, { ordered: false });
+      insertedCerts = res.length;
+    } catch (e) {
+      if (e.writeErrors) {
+        insertedCerts = finalCerts.length - e.writeErrors.length;
+        duplicateCerts = e.writeErrors.length;
+      }
+    }
+  }
+  return { students: students.length, certificates: finalCerts.length, insertedStudents, duplicateStudents, insertedCerts, duplicateCerts, skippedCerts };
 }

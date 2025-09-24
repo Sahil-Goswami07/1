@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth.js';
+import { fetchStats, fetchRecentLogs } from '../lib/api.js';
 
 async function uploadExcel(file, token, setStatus) {
   const form = new FormData();
@@ -18,6 +19,22 @@ const UniversityDashboard = () => {
   const [file, setFile] = useState(null);
   const [importResult, setImportResult] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [stats, setStats] = useState(null);
+  const [recent, setRecent] = useState([]);
+  const [loadingDash, setLoadingDash] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      try {
+        const [s, r] = await Promise.all([fetchStats(token), fetchRecentLogs(token)]);
+        if (mounted) { setStats(s); setRecent(r); }
+      } catch (e) { /* ignore */ }
+      finally { if (mounted) setLoadingDash(false); }
+    }
+    if (token) load();
+    return () => { mounted = false; };
+  }, [token]);
   const handleUpload = async () => {
     if (!file) return;
     setUploading(true); setImportResult(null);
@@ -35,15 +52,15 @@ const UniversityDashboard = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
           <div className="bg-white border border-slate-200 rounded-lg p-5">
             <h3 className="text-sm font-medium text-slate-500">Total Students</h3>
-            <p className="mt-1 text-3xl font-semibold text-slate-900">250,000</p>
+            <p className="mt-1 text-3xl font-semibold text-slate-900">{stats ? stats.students : '...'}</p>
           </div>
           <div className="bg-white border border-slate-200 rounded-lg p-5">
-            <h3 className="text-sm font-medium text-slate-500">Verified Certificates</h3>
-            <p className="mt-1 text-3xl font-semibold text-slate-900">150,212</p>
+            <h3 className="text-sm font-medium text-slate-500">Total Certificates</h3>
+            <p className="mt-1 text-3xl font-semibold text-slate-900">{stats ? stats.certificates : '...'}</p>
           </div>
           <div className="bg-white border border-slate-200 rounded-lg p-5">
-            <h3 className="text-sm font-medium text-slate-500">Pending Verifications</h3>
-            <p className="mt-1 text-3xl font-semibold text-amber-600">89</p>
+            <h3 className="text-sm font-medium text-slate-500">Verification Success %</h3>
+            <p className="mt-1 text-3xl font-semibold text-slate-900">{stats ? stats.verifiedRate + '%' : '...'}</p>
           </div>
         </div>
 
@@ -55,7 +72,7 @@ const UniversityDashboard = () => {
             <button disabled={uploading || !file} onClick={handleUpload} className="px-3 py-2 bg-blue-600 text-white rounded text-sm disabled:opacity-50">
               {uploading ? 'Uploading...' : 'Upload & Import'}
             </button>
-            {importResult && <p className="text-xs text-slate-600">{importResult.error ? importResult.error : `Students: ${importResult.students} | Certificates: ${importResult.certificates}`}</p>}
+      {importResult && <p className="text-xs text-slate-600">{importResult.error ? importResult.error : `Students: ${importResult.insertedStudents}/${importResult.students} (dup ${importResult.duplicateStudents}) | Certs: ${importResult.insertedCerts}/${importResult.certificates} (dup ${importResult.duplicateCerts})`}</p>}
           </div>
           <p className="mt-3 text-xs text-slate-500">Expected columns: rollNo, name, course, graduationYear, certNo, marks, issueDate.</p>
         </div>
@@ -74,30 +91,19 @@ const UniversityDashboard = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-slate-200">
-                <tr>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">Priya Sharma</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{(universityCode || 'UNI') + '-12345'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">Sep 18, 2025</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Verified</span>
-                  </td>
-                </tr>
-                <tr>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">Amit Kumar</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{(universityCode || 'UNI') + '-67890'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">Sep 18, 2025</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Mismatch Found</span>
-                  </td>
-                </tr>
-                <tr>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">Sunita Devi</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{(universityCode || 'UNI') + '-54321'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">Sep 17, 2025</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Verified</span>
-                  </td>
-                </tr>
+                {recent.map(r => (
+                  <tr key={r.certNo + r.verifiedAt}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">-</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{r.certNo}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{new Date(r.verifiedAt).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${r.status === 'verified' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{r.status}</span>
+                    </td>
+                  </tr>
+                ))}
+                {!recent.length && !loadingDash && (
+                  <tr><td className="px-6 py-4 text-sm text-slate-500" colSpan={4}>No verifications yet.</td></tr>
+                )}
               </tbody>
             </table>
           </div>

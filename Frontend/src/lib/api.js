@@ -43,3 +43,13 @@ export async function fetchLogs(token) {
   return handleResponse(res);
 }
 
+export async function fetchStats(token) {
+  const res = await fetch(`${BASE}/api/logs/stats`, { headers: { Authorization: 'Bearer ' + token } });
+  return handleResponse(res);
+}
+
+export async function fetchRecentLogs(token) {
+  const res = await fetch(`${BASE}/api/logs/recent`, { headers: { Authorization: 'Bearer ' + token } });
+  return handleResponse(res);
+}
+

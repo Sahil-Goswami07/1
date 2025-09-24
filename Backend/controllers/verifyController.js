@@ -9,32 +9,77 @@ export const verifyFileMiddleware = fileUpload({ useTempFiles: true, tempFileDir
 
 export async function verifyCertificate(req, res) {
   try {
-    let { certNo, rollNo } = req.body;
+    let { certNo, rollNo, marks, graduationYear } = req.body;
     let ocr = null;
     if (req.files && req.files.certificate) {
       ocr = await runOCR(req.files.certificate);
       // Attempt to infer certNo / rollNo from OCR if missing
       if (!rollNo && ocr.rollNumber && ocr.rollNumber !== 'Unknown') rollNo = ocr.rollNumber;
-      if (!certNo && ocr.enrollmentNumber && ocr.enrollmentNumber !== 'Unknown') certNo = ocr.enrollmentNumber;
+  if (!certNo && ocr.enrollmentNumber && ocr.enrollmentNumber !== 'Unknown') certNo = ocr.enrollmentNumber;
     }
-    if (!certNo || !rollNo) return res.status(400).json({ error: 'certNo and rollNo required (either sent or derivable from OCR)' });
+  if (!certNo || !rollNo) return res.status(400).json({ error: 'certNo and rollNo required (either sent or derivable from OCR / enrollment fallback)' });
     const cert = await Certificate.findOne({ certNo }).populate('studentId');
-    let status = 'failed';
-    let score = 0;
     const reasons = [];
-    if (cert) {
-      const student = await Student.findById(cert.studentId._id);
-      if (student && student.rollNo === rollNo) {
-        status = 'verified';
-        score = 100;
-      } else {
-        reasons.push('Roll number mismatch');
-      }
-    } else {
+    const fieldsMatched = [];
+    const fieldsMismatched = [];
+    let score = 0;
+    if (!cert) {
       reasons.push('Certificate not found');
     }
+    if (cert) {
+      // Roll number match (mandatory)
+      if (cert.studentId && cert.studentId.rollNo === rollNo) {
+        fieldsMatched.push('rollNo');
+        score += 50; // base weight for correct identity linkage
+      } else {
+        fieldsMismatched.push('rollNo');
+        reasons.push('Roll number mismatch');
+      }
+      // Graduation year comparison if provided by client or exists in student record
+      const storedGrad = cert.studentId ? cert.studentId.graduationYear : undefined;
+      if (graduationYear) graduationYear = Number(graduationYear);
+      if (storedGrad) {
+        if (!graduationYear || graduationYear === storedGrad) {
+          fieldsMatched.push('graduationYear');
+          score += 15;
+        } else {
+          fieldsMismatched.push('graduationYear');
+          reasons.push('Graduation year mismatch');
+        }
+      }
+      // Marks comparison if client supplied marks
+      if (marks) {
+        const suppliedMarks = Number(marks);
+        if (!isNaN(suppliedMarks) && cert.marksPercent != null) {
+          if (Math.abs(suppliedMarks - cert.marksPercent) <= 1) { // allow small OCR rounding difference
+            fieldsMatched.push('marks');
+            score += 25;
+          } else {
+            fieldsMismatched.push('marks');
+            reasons.push('Marks mismatch');
+          }
+        }
+      } else if (cert.marksPercent != null) {
+        // We still give partial score for having stored marks even if not supplied (context reliability)
+        score += 10;
+      }
+      // Issue date heuristic if OCR extracted a date (not implemented yet – placeholder for future)
+    }
+    // Compute final status threshold
+    const status = cert && score >= 50 && fieldsMismatched.length === 0 ? 'verified' : (cert ? 'partial' : 'failed');
     await VerificationLog.create({ certNo, status, score, reasons, universityId: cert ? cert.universityId : undefined });
-    res.json({ status, score, reasons, ocr });
+    res.json({ status, score, reasons, fieldsMatched, fieldsMismatched, ocr, certificate: cert ? {
+      certNo: cert.certNo,
+      issueDate: cert.issueDate,
+      marks: cert.marksPercent,
+      universityId: cert.universityId,
+      student: cert.studentId ? {
+        name: cert.studentId.name,
+        rollNo: cert.studentId.rollNo,
+        course: cert.studentId.course,
+        graduationYear: cert.studentId.graduationYear
+      } : null
+    } : null });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
