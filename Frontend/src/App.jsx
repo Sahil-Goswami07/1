@@ -1,10 +1,13 @@
 // src/App.jsx
 import React from 'react'
 import { Routes, Route } from 'react-router-dom'
+import { AuthProvider } from './context/AuthContext.jsx'
+import ProtectedRoute from './components/ProtectedRoute.jsx'
+import Login from './pages/Login.jsx'
 
 // Pages
 import Home from './pages/Home'
-import Demo from './pages/Demo'
+// Removed marketing pages (Demo, About, etc.)
 import SimplePage from './pages/SimplePage'
 import AdminDashboard from './pages/AdminDashboard'
 import UniversityDashboard from './pages/UniversityDashboard'
@@ -13,9 +16,11 @@ import UniversityDashboard from './pages/UniversityDashboard'
 import MainLayout from './layouts/MainLayout'
 import DashboardLayout from './layouts/DashboardLayout'
 import CertificateUpload from './components/certificateUpload'
+import UniversityApply from './pages/UniversityApply.jsx'
 
 export default function App() {
   return (
+    <AuthProvider>
     <Routes>
       {/* Public Pages */}
       <Route
@@ -23,43 +28,17 @@ export default function App() {
         element={<MainLayout><Home /></MainLayout>}
       />
       <Route
-        path="/demo"
-        element={<MainLayout><Demo /></MainLayout>}
-      />
-      <Route
-        path="/features"
-        element={<MainLayout><SimplePage title="Features" /></MainLayout>}
-      />
-      <Route
-        path="/tech-specs"
-        element={<MainLayout><SimplePage title="Technical Specifications" /></MainLayout>}
-      />
-      <Route
-        path="/api"
-        element={<MainLayout><SimplePage title="API Documentation" /></MainLayout>}
-      />
-      <Route
-        path="/about"
-        element={<MainLayout><SimplePage title="About" /></MainLayout>}
-      />
-      <Route
         path="/verify"
         element={<MainLayout><CertificateUpload/></MainLayout>} // <-- CertificateUpload page
       />
-      <Route
-        path="/contact"
-        element={<MainLayout><SimplePage title="Contact & Request Pilot" /></MainLayout>}
-      />
+      {/* Simplified: removed Contact/Roadmap/etc. */}
 
       {/* Dashboard Pages */}
-      <Route
-        path="/admin"
-        element={<DashboardLayout><AdminDashboard /></DashboardLayout>}
-      />
-      <Route
-        path="/university"
-        element={<DashboardLayout><UniversityDashboard /></DashboardLayout>}
-      />
+  <Route path="/login/admin" element={<MainLayout><Login targetRole="superAdmin" /></MainLayout>} />
+  <Route path="/login/university" element={<MainLayout><Login targetRole="universityAdmin" /></MainLayout>} />
+  <Route path="/university/apply" element={<MainLayout><UniversityApply /></MainLayout>} />
+      <Route path="/admin" element={<ProtectedRoute roles={['superAdmin']}><DashboardLayout><AdminDashboard /></DashboardLayout></ProtectedRoute>} />
+      <Route path="/university" element={<ProtectedRoute roles={['universityAdmin','superAdmin']}><DashboardLayout><UniversityDashboard /></DashboardLayout></ProtectedRoute>} />
 
       {/* Fallback for unmatched routes */}
       <Route
@@ -73,5 +52,6 @@ export default function App() {
         }
       />
     </Routes>
+    </AuthProvider>
   )
 }

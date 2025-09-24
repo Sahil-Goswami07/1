@@ -11,15 +11,12 @@ export const site = {
   },
   nav: [
     { to: '/', label: 'Home' },
-    { to: '/demo', label: 'Demo' },
-    { to: '/features', label: 'Features' },
-    { to: '/tech-specs', label: 'Tech Specs' },
-    { to: '/api', label: 'API' },
-    { to: '/about', label: 'About' },
-    { to: '/roadmap', label: 'Roadmap' },
-    { to: '/contact', label: 'Contact' },
+    { to: '/verify', label: 'Verify' },
     { to: '/admin', label: 'Admin' },
     { to: '/university', label: 'University' },
+    { to: '/login/admin', label: 'Admin Login', publicOnly: true },
+    { to: '/login/university', label: 'University Login', publicOnly: true },
+    { to: '/university/apply', label: 'Apply (University)', publicOnly: true },
   ],
   home: {
     hero: {

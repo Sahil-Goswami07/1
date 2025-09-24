@@ -1,6 +1,28 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { useAuth } from '../hooks/useAuth.js';
+
+async function fetchUniversities(token) {
+  const res = await fetch('http://localhost:5000/api/universities', { headers: { Authorization: 'Bearer ' + token } });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+async function approveUniversity(id, token) {
+  await fetch(`http://localhost:5000/api/universities/${id}/approve`, { method: 'POST', headers: { Authorization: 'Bearer ' + token } });
+}
 
 const AdminDashboard = () => {
+  const { token } = useAuth();
+  const [universities, setUniversities] = useState([]);
+  const [loadingUnis, setLoadingUnis] = useState(false);
+  const load = async () => {
+    if (!token) return;
+    setLoadingUnis(true);
+    const data = await fetchUniversities(token);
+    setUniversities(data);
+    setLoadingUnis(false);
+  };
+  useEffect(() => { load(); }, [token]);
   return (
     <div className="bg-slate-50 min-h-screen">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -39,27 +61,23 @@ const AdminDashboard = () => {
             </div>
           </div>
           <div className="bg-white border border-slate-200 rounded-lg p-6">
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">Registered Universities</h2>
-            <ul className="space-y-3">
-              <li className="flex items-center justify-between">
-                <span className="text-slate-700">Rajasthan Technical University</span>
-                <span className="text-sm font-medium text-slate-500">150k Verified</span>
-              </li>
-              <li className="flex items-center justify-between">
-                <span className="text-slate-700">MLSU, Udaipur</span>
-                <span className="text-sm font-medium text-slate-500">120k Verified</span>
-              </li>
-              <li className="flex items-center justify-between">
-                <span className="text-slate-700">RUHS, Jaipur</span>
-                <span className="text-sm font-medium text-slate-500">95k Verified</span>
-              </li>
-              <li className="flex items-center justify-between">
-                <span className="text-slate-700">University of Jaipur</span>
-                <span className="text-sm font-medium text-slate-500">88k Verified</span>
-              </li>
-              <li className="pt-2">
-                <a href="#" className="text-sm font-semibold text-blue-600 hover:text-blue-700">View All Universities →</a>
-              </li>
+            <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center justify-between">Universities
+              <button onClick={load} className="text-xs px-2 py-1 rounded bg-slate-100 hover:bg-slate-200">Refresh</button>
+            </h2>
+            {loadingUnis && <p className="text-xs text-slate-500">Loading...</p>}
+            <ul className="space-y-2 max-h-72 overflow-auto text-sm">
+              {universities.map(u => (
+                <li key={u._id} className="flex items-center justify-between gap-3 border border-slate-100 rounded px-2 py-1">
+                  <div>
+                    <p className="font-medium text-slate-700">{u.name}</p>
+                    <p className="text-[10px] uppercase tracking-wide text-slate-500">{u.code} • {u.status}</p>
+                  </div>
+                  {u.status !== 'approved' && (
+                    <button onClick={async ()=>{await approveUniversity(u._id, token); load();}} className="text-xs bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700">Approve</button>
+                  )}
+                </li>
+              ))}
+              {!universities.length && !loadingUnis && <li className="text-slate-500 text-xs">No universities yet.</li>}
             </ul>
           </div>
         </div>
