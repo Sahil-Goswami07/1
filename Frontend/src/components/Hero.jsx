@@ -29,8 +29,8 @@ export default function Hero({
             </div>
 
             <div className="mt-6 text-sm text-slate-500">
-              <span className="inline-block mr-3">🔒 GDPR-ready</span>
-              <span className="inline-block mr-3">⚡ 2s avg verification</span>
+              <span className="inline-block mr-3">🔒 Three step Verification </span>
+              <span className="inline-block mr-3">⚡ 20s avg verification</span>
               <span className="inline-block">📁 Bulk import</span>
             </div>
           </div>
