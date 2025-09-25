@@ -7,7 +7,6 @@ import Login from './pages/Login.jsx'
 
 // Pages
 import Home from './pages/Home'
-// Removed marketing pages (Demo, About, etc.)
 import SimplePage from './pages/SimplePage'
 import AdminDashboard from './pages/AdminDashboard'
 import UniversityDashboard from './pages/UniversityDashboard'
@@ -22,53 +21,34 @@ import UniversityApply from './pages/UniversityApply.jsx'
 export default function App() {
   return (
     <AuthProvider>
-    <Routes>
-      {/* Public Pages */}
-      <Route
-        path="/"
-        element={<MainLayout><Home /></MainLayout>}
-      />
-      <Route
-        path="/verify"
-        element={<MainLayout><Verify /></MainLayout>}
-      />
-      <Route
-        path="/about"
-        element={<MainLayout><SimplePage title="About" /></MainLayout>}
-      />
-      <Route
-        path="/contact"
-        element={<MainLayout><SimplePage title="Contact & Apply (University)" /></MainLayout>}
-      />
-      <Route
-        path="/roadmap"
-        element={<MainLayout><SimplePage title="Roadmap" /></MainLayout>}
-      />
-      <Route
-        path="/api"
-        element={<MainLayout><SimplePage title="API Documentation" /></MainLayout>}
-      />
-      {/* Simplified: removed Contact/Roadmap/etc. */}
+      {/* Wrap all routes with background */}
+      <div className="min-h-screen" style={{ backgroundColor: '#e0f2ff' }}>
+        <Routes>
+          {/* Public Pages */}
+          <Route path="/" element={<MainLayout><Home /></MainLayout>} />
+          <Route path="/verify" element={<MainLayout><Verify /></MainLayout>} />
+          <Route path="/about" element={<MainLayout><SimplePage title="About" /></MainLayout>} />
+          <Route path="/contact" element={<MainLayout><SimplePage title="Contact & Apply (University)" /></MainLayout>} />
+          <Route path="/roadmap" element={<MainLayout><SimplePage title="Roadmap" /></MainLayout>} />
+          <Route path="/api" element={<MainLayout><SimplePage title="API Documentation" /></MainLayout>} />
 
-      {/* Dashboard Pages */}
-  <Route path="/login/admin" element={<MainLayout><Login targetRole="superAdmin" /></MainLayout>} />
-  <Route path="/login/university" element={<MainLayout><Login targetRole="universityAdmin" /></MainLayout>} />
-  <Route path="/university/apply" element={<MainLayout><UniversityApply /></MainLayout>} />
-      <Route path="/admin" element={<ProtectedRoute roles={['superAdmin']}><DashboardLayout><AdminDashboard /></DashboardLayout></ProtectedRoute>} />
-      <Route path="/university" element={<ProtectedRoute roles={['universityAdmin','superAdmin']}><DashboardLayout><UniversityDashboard /></DashboardLayout></ProtectedRoute>} />
+          {/* Dashboard Pages */}
+          <Route path="/login/admin" element={<MainLayout><Login targetRole="superAdmin" /></MainLayout>} />
+          <Route path="/login/university" element={<MainLayout><Login targetRole="universityAdmin" /></MainLayout>} />
+          <Route path="/university/apply" element={<MainLayout><UniversityApply /></MainLayout>} />
+          <Route path="/admin" element={<ProtectedRoute roles={['superAdmin']}><DashboardLayout><AdminDashboard /></DashboardLayout></ProtectedRoute>} />
+          <Route path="/university" element={<ProtectedRoute roles={['universityAdmin','superAdmin']}><DashboardLayout><UniversityDashboard /></DashboardLayout></ProtectedRoute>} />
 
-      {/* Fallback for unmatched routes */}
-      <Route
-        path="*"
-        element={
-          <MainLayout>
-            <SimplePage title="Not Found">
-              The page you’re looking for doesn’t exist.
-            </SimplePage>
-          </MainLayout>
-        }
-      />
-    </Routes>
+          {/* Fallback for unmatched routes */}
+          <Route path="*" element={
+            <MainLayout>
+              <SimplePage title="Not Found">
+                The page you’re looking for doesn’t exist.
+              </SimplePage>
+            </MainLayout>
+          } />
+        </Routes>
+      </div>
     </AuthProvider>
   )
 }

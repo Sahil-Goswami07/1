@@ -1,47 +1,30 @@
-import React, { useEffect, useState } from 'react';
+import { FaUniversity, FaUserTie, FaClipboardList, FaFlask } from 'react-icons/fa';
 
-const FALLBACK_LOGOS = [
-  { name: 'Trusted University', logo: 'https://via.placeholder.com/140x48?text=University' },
-  { name: 'EduAuth Partner', logo: 'https://via.placeholder.com/140x48?text=Partner' },
-  { name: 'Accredited Board', logo: 'https://via.placeholder.com/140x48?text=Board' },
-  { name: 'Research Institute', logo: 'https://via.placeholder.com/140x48?text=Research' }
+const logos = [
+  { name: 'University', icon: <FaUniversity size={48} /> },
+  { name: 'Partner', icon: <FaUserTie size={48} /> },
+  { name: 'Board', icon: <FaClipboardList size={48} /> },
+  { name: 'Research', icon: <FaFlask size={48} /> },
 ];
 
 const Logos = () => {
-  const [logos, setLogos] = useState(FALLBACK_LOGOS);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch('http://localhost:5000/api/universities')
-      .then(async (res) => {
-        if (!res.ok) throw new Error('status ' + res.status);
-        const data = await res.json();
-        if (!Array.isArray(data)) throw new Error('Not array');
-        return data.filter(u => u.status === 'approved').map(u => ({ name: u.name, logo: u.logo || 'https://via.placeholder.com/140x48?text=' + encodeURIComponent(u.code || 'UNI') }));
-      })
-      .then((data) => { if (!cancelled && data.length) setLogos(data); })
-      .catch(() => {/* keep fallback */})
-      .finally(() => { if (!cancelled) setLoaded(true); });
-    return () => { cancelled = true; };
-  }, []);
-
   return (
-    <div className="bg-white">
-      <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
+    <div className="bg-gray-50 py-16">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <h2 className="text-3xl font-extrabold text-gray-900 text-center mb-12">
+          Our Trusted Partners
+        </h2>
         <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
-          {Array.isArray(logos) && logos.map((logo) => (
-            <div key={logo.name} className="col-span-1 flex justify-center">
-              <img
-                className="h-12"
-                src={logo.logo}
-                alt={logo.name}
-                onError={(e) => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/140x48?text=Logo'; }}
-              />
+          {logos.map((logo) => (
+            <div
+              key={logo.name}
+              className="flex flex-col items-center justify-center p-6 bg-white rounded-xl shadow-md hover:shadow-xl hover:scale-105 transition-transform duration-300 cursor-pointer"
+            >
+              <div className="text-blue-600 mb-4">{logo.icon}</div>
+              <span className="text-gray-700 font-medium text-lg">{logo.name}</span>
             </div>
           ))}
         </div>
-        {!loaded && <p className="text-center text-xs text-slate-400 mt-4">Loading partners…</p>}
       </div>
     </div>
   );
