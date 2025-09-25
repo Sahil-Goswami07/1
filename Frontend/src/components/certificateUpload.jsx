@@ -39,19 +39,35 @@ export default function CertificateUpload() {
     }
   };
 
-  return (
-    <div>
-      <input type="file" accept="image/*,application/pdf" onChange={handleFileChange} />
-      <button onClick={handleUpload} disabled={loading}>
+ return (
+  <div className="flex flex-col items-center my-6">
+    {/* Upload + Button Row */}
+    <div className="flex justify-center items-center space-x-4">
+      <input
+        type="file"
+        accept="image/*,application/pdf"
+        onChange={handleFileChange}
+        className="border rounded px-3 py-2"
+      />
+      <button
+        onClick={handleUpload}
+        disabled={loading}
+        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition disabled:opacity-50"
+      >
         {loading ? 'Uploading...' : 'Verify Certificate'}
       </button>
-
-      {result && (
-        <div style={{ marginTop: '20px' }}>
-          <h3>OCR Result:</h3>
-          <pre>{JSON.stringify(result, null, 2)}</pre>
-        </div>
-      )}
     </div>
-  );
+
+    {/* OCR Result */}
+    {result && (
+      <div className="mt-6 w-full max-w-2xl">
+        <h3 className="text-lg font-semibold mb-2">OCR Result:</h3>
+        <pre className="bg-gray-100 p-4 rounded overflow-x-auto text-sm">
+          {JSON.stringify(result, null, 2)}
+        </pre>
+      </div>
+    )}
+  </div>
+);
+
 }
