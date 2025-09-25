@@ -20,7 +20,7 @@ export const site = {
   ],
   home: {
     hero: {
-      headline: 'Protecting academic integrity — one certificate at a time',
+      headline: 'Protecting academic integrity with AI & Blockchain',
       subheadline: 'AI + OCR + Blockchain verification for new and legacy certificates. Mobile-first. Government-ready.',
       ctaPrimary: { label: 'Verify (to easily verify from here also)', href: '/verify' },
       ctaSecondary: { label: 'Apply (University)', href: '/university/apply' },
