@@ -21,9 +21,9 @@ export const site = {
   home: {
     hero: {
       headline: 'Protecting academic integrity — one certificate at a time',
-      subheadline: 'AI + OCR + Blockchain verification for new and legacy certificates. Mobile-first. Government-ready.',
-      ctaPrimary: { label: 'Verify (to easily verify from here also)', href: '/verify' },
-      ctaSecondary: { label: 'Apply (University)', href: '/university/apply' },
+      subheadline: 'AI + OCR + Cryptographic verification for new and legacy certificates. Mobile-first. Government-ready.',
+      ctaPrimary: { label: 'Try Demo', href: '/demo' },
+      ctaSecondary: { label: 'Request Pilot', href: '/contact' },
     },
   },
   demo: {

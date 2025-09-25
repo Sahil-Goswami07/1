@@ -62,7 +62,7 @@ export default function SimplePage({ title }) {
         ))}
       </div>
     ),
-    'Contact & Apply (University)': (
+    'Contact & Request Pilot': (
       <div className="mt-4 grid gap-4">
         <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
           <p className="text-slate-700 text-sm">{site.contact.content}</p>
