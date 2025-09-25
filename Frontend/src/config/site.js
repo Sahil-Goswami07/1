@@ -12,6 +12,12 @@ export const site = {
   nav: [
     { to: '/', label: 'Home' },
     { to: '/verify', label: 'Verify' },
+    { to: '/about', label: 'About' },
+    { to: '/contact', label: 'Contact' },
+    { label: 'More', children: [
+      { to: '/roadmap', label: 'Roadmap' },
+      { to: '/api', label: 'API' },
+    ]},
     { to: '/admin', label: 'Admin' },
     { to: '/university', label: 'University' },
     { to: '/login/admin', label: 'Admin Login', publicOnly: true },

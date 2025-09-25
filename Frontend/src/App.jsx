@@ -32,6 +32,22 @@ export default function App() {
         path="/verify"
         element={<MainLayout><Verify /></MainLayout>}
       />
+      <Route
+        path="/about"
+        element={<MainLayout><SimplePage title="About" /></MainLayout>}
+      />
+      <Route
+        path="/contact"
+        element={<MainLayout><SimplePage title="Contact & Apply (University)" /></MainLayout>}
+      />
+      <Route
+        path="/roadmap"
+        element={<MainLayout><SimplePage title="Roadmap" /></MainLayout>}
+      />
+      <Route
+        path="/api"
+        element={<MainLayout><SimplePage title="API Documentation" /></MainLayout>}
+      />
       {/* Simplified: removed Contact/Roadmap/etc. */}
 
       {/* Dashboard Pages */}

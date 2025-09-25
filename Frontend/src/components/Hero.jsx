@@ -26,6 +26,7 @@ export default function Hero({
               <a href={ctaSecondary.href} className="btn btn-ghost">
                 {ctaSecondary.label}
               </a>
+              <a href="/contact" className="btn btn-ghost">Need Help?</a>
             </div>
 
             <div className="mt-6 text-sm text-slate-500">
