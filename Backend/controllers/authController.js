@@ -4,10 +4,31 @@ import User from '../models/User.js';
 import University from '../models/University.js';
 
 export async function login(req, res) {
-  const { email, password } = req.body;
+  let { email, password } = req.body;
+  email = (email || '').toLowerCase().trim();
   const user = await User.findOne({ email });
   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-  const ok = await bcrypt.compare(password, user.passwordHash);
+
+  let ok = false;
+  if (user.passwordHash) {
+    ok = await bcrypt.compare(password, user.passwordHash);
+  } else if (user.password) {
+    // Legacy field handling: if stored value looks like bcrypt hash, migrate; if plaintext, hash and migrate
+    const stored = String(user.password);
+    if (stored.startsWith('$2')) {
+      ok = await bcrypt.compare(password, stored);
+      if (ok) {
+        await User.updateOne({ _id: user._id }, { $set: { passwordHash: stored }, $unset: { password: 1 } });
+      }
+    } else {
+      // assume plaintext
+      ok = stored === password;
+      if (ok) {
+        const hash = await bcrypt.hash(password, 10);
+        await User.updateOne({ _id: user._id }, { $set: { passwordHash: hash }, $unset: { password: 1 } });
+      }
+    }
+  }
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
   let uniInfo = null;
   if (user.role === 'universityAdmin' && user.universityId) {
@@ -21,7 +42,8 @@ export async function login(req, res) {
 }
 
 export async function registerUniversityAdmin(req, res) {
-  const { email, password, universityCode, universityName } = req.body;
+  let { email, password, universityCode, universityName } = req.body;
+  email = (email || '').toLowerCase().trim();
   if (!email || !password || !universityCode) return res.status(400).json({ error: 'Missing fields' });
   const existing = await User.findOne({ email });
   if (existing) return res.status(400).json({ error: 'User exists' });
@@ -36,7 +58,8 @@ export async function registerUniversityAdmin(req, res) {
 
 // Public self-service university application (no auth). Creates pending university + admin user.
 export async function publicUniversityApply(req, res) {
-  const { email, password, universityCode, universityName, address, contactEmail } = req.body;
+  let { email, password, universityCode, universityName, address, contactEmail } = req.body;
+  email = (email || '').toLowerCase().trim();
   if (!email || !password || !universityCode) return res.status(400).json({ error: 'Missing required fields' });
   const existingUser = await User.findOne({ email });
   if (existingUser) return res.status(400).json({ error: 'Email already registered' });

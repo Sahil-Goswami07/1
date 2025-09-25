@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node app.js",
     "dev": "nodemon app.js",
-    "seed:super": "node ./scripts/seedSuperAdmin.js"
+    "seed:super": "node ./scripts/seedSuperAdmin.js",
+    "migrate:passwords": "node ./scripts/migratePasswords.js"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",

@@ -10,6 +10,8 @@ import certificateRoutes from './routes/certificates.js';
 import logRoutes from './routes/logs.js';
 import legacyVerify from './routes/verify.js';
 // authMiddleware imported inside route files as needed
+import bcrypt from 'bcrypt';
+import User from './models/User.js';
 
 dotenv.config();
 
@@ -19,6 +21,27 @@ app.use(express.json());
 
 // DB
 connectDB(process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/eduauth');
+
+// Ensure a super admin exists (helpful for fresh environments)
+(async () => {
+	try {
+		const email = process.env.ADMIN_EMAIL;
+		const password = process.env.ADMIN_PASSWORD;
+		if (!email || !password) return; // skip if not configured
+		let user = await User.findOne({ email }).lean();
+		if (!user) {
+			const hash = await bcrypt.hash(password, 10);
+			await User.create({ email, passwordHash: hash, role: 'superAdmin' });
+			console.log(`[bootstrap] Super admin created for ${email}`);
+		} else if (!user.passwordHash && user.password && String(user.password).startsWith('$2')) {
+			// migrate legacy 'password' hash to 'passwordHash'
+			await User.updateOne({ _id: user._id }, { $set: { passwordHash: user.password }, $unset: { password: 1 } });
+			console.log('[bootstrap] Migrated legacy password hash to passwordHash');
+		}
+	} catch (e) {
+		console.warn('[bootstrap] Super admin setup skipped:', e.message);
+	}
+})();
 
 // Routes
 app.use('/api/auth', authRoutes);
