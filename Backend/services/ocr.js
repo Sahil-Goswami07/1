@@ -49,9 +49,34 @@ export async function runOCR(file) {
     logger: m => console.log(m),
   });
 
-  // Extract details using regex
-  const candidateNameMatch = text.match(/Name\s*[:\-]?\s*([A-Z ]+)/i);
-  const candidateName = candidateNameMatch ? candidateNameMatch[1].trim() : 'Unknown';
+  // Extract candidate (student) name.
+  // Updated to handle combined line: "Name : X Y Father's Name : Z" and avoid capturing college name.
+  let candidateName = 'Unknown';
+  try {
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    for (const rawLine of lines) {
+      const line = rawLine.replace(/\s+/g,' ');
+      // Skip pure college line
+      if (/^college name/i.test(line)) continue;
+      // If line contains both Name and Father's Name, isolate segment before Father's Name
+      if (/name\s*[:]/i.test(line)) {
+        let working = line;
+        const fatherIdx = working.search(/father'?s name/i);
+        if (fatherIdx > -1) working = working.slice(0, fatherIdx); // remove father's part
+        // Now extract after first Name:
+        const m = working.match(/(?:student|candidate)?\s*name\s*[:\-]\s*([A-Z][A-Z .']{1,})/i);
+        if (m) {
+          const val = m[1].trim();
+            if (val && !/COLLEGE|UNIVERSITY/i.test(val)) { candidateName = val; break; }
+        }
+      }
+    }
+    if (candidateName === 'Unknown') {
+      // Global fallback search (stop at Father's if present)
+      const global = text.match(/Name\s*[:\-]\s*([A-Z][A-Z .']{2,})(?=\s+Father's Name|\n|$)/i);
+      if (global && !/COLLEGE|UNIVERSITY/i.test(global[1])) candidateName = global[1].trim();
+    }
+  } catch (e) { /* ignore */ }
 
   const collegeMatch = text.match(/College Name\s*[:\-]?\s*(.+)/i);
   const collegeName = collegeMatch ? collegeMatch[1].trim() : 'Unknown';
@@ -89,6 +114,7 @@ export async function runOCR(file) {
 
   return {
     candidateName,
+    normalizedCandidateName: candidateName, // controller applies deeper normalization
     collegeName,
     rollNumber,
     enrollmentNumber,

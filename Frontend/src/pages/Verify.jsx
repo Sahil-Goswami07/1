@@ -200,13 +200,26 @@ export default function Verify() {
                     </ul>
                   )}
                   {result.scoreBreakdown && (
-                    <div className="mt-4">
-                      <h3 className="text-xs font-semibold text-slate-500 mb-1">Score Breakdown</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {Object.entries(result.scoreBreakdown).map(([k,v]) => (
-                          <span key={k} className="px-2 py-1 rounded bg-slate-100 text-[10px] font-medium text-slate-700">{k}:{v}</span>
-                        ))}
+                    <div className="mt-4 space-y-2">
+                      <div>
+                        <h3 className="text-xs font-semibold text-slate-500 mb-1">Score Breakdown</h3>
+                        <div className="flex flex-wrap gap-2">
+                          {Object.entries(result.scoreBreakdown)
+                            .filter(([_,v]) => (typeof v === 'number' || typeof v === 'string'))
+                            .map(([k,v]) => (
+                              <span key={k} className="px-2 py-1 rounded bg-slate-100 text-[10px] font-medium text-slate-700">{k}:{v}</span>
+                            ))}
+                        </div>
                       </div>
+                      {result.scoreBreakdown.nameTokens && (
+                        <details className="text-[10px]">
+                          <summary className="cursor-pointer text-blue-600">Name Token Diagnostics</summary>
+                          <div className="mt-1 p-2 bg-slate-50 rounded border border-slate-200 space-y-1">
+                            <div><strong>OCR Tokens:</strong> {result.scoreBreakdown.nameTokens.o.join(' ')}</div>
+                            <div><strong>Stored Tokens:</strong> {result.scoreBreakdown.nameTokens.s.join(' ')}</div>
+                          </div>
+                        </details>
+                      )}
                     </div>
                   )}
                   <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
