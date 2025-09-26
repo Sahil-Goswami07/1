@@ -5,6 +5,8 @@ import { runOCR } from '../services/ocr.js';
 import fileUpload from 'express-fileupload';
 import { SCORING, POLICY } from '../config/scoring.js';
 import { nameSimilarity } from '../utils/textNormalize.js';
+import { validateRules } from '../utils/ruleValidator.js';
+import { buildFeatureVector, scoreAnomaly } from '../services/mlAnomaly.js';
 
 // Middleware for optional file upload (used only on this route)
 export const verifyFileMiddleware = fileUpload({ useTempFiles: true, tempFileDir: './Backend/tmp', createParentPath: true });
@@ -16,11 +18,29 @@ export async function verifyCertificate(req, res) {
     if (req.files && req.files.certificate) {
       ocr = await runOCR(req.files.certificate);
       // Attempt to infer certNo / rollNo from OCR if missing
-      if (!rollNo && ocr.rollNumber && ocr.rollNumber !== 'Unknown') rollNo = ocr.rollNumber;
-  if (!certNo && ocr.enrollmentNumber && ocr.enrollmentNumber !== 'Unknown') certNo = ocr.enrollmentNumber;
+      if (!rollNo) {
+        if (ocr.correctedRollNumber && ocr.correctedRollNumber !== 'Unknown') rollNo = ocr.correctedRollNumber;
+        else if (ocr.rollNumber && ocr.rollNumber !== 'Unknown') rollNo = ocr.rollNumber;
+      }
+  if (!certNo) {
+    if (ocr.correctedEnrollmentNumber && ocr.correctedEnrollmentNumber !== 'Unknown') certNo = ocr.correctedEnrollmentNumber;
+    else if (ocr.enrollmentNumber && ocr.enrollmentNumber !== 'Unknown') certNo = ocr.enrollmentNumber;
+  }
+  // Fallback: use serial number if enrollment not found
+  if (!certNo && ocr.serialNumber && ocr.serialNumber !== 'Unknown') {
+    certNo = ocr.serialNumber;
+    // Tag that we inferred from serial so downstream (future) logic could differentiate
+    if (!req.inferredSources) req.inferredSources = [];
+    req.inferredSources.push('certNo:serialNumber');
+  }
     }
+  // Basic normalization of identifiers (strip spaces & non-alphanumerics, uppercase) to improve match chance
+  const normalizeId = v => typeof v === 'string' ? v.replace(/[^A-Za-z0-9]/g, '').toUpperCase() : v;
+  if (certNo) certNo = normalizeId(certNo);
+  if (rollNo) rollNo = normalizeId(rollNo);
   if (!certNo || !rollNo) return res.status(400).json({ error: 'certNo and rollNo required (either sent or derivable from OCR / enrollment fallback)' });
-    const cert = await Certificate.findOne({ certNo }).populate('studentId');
+  const cert = await Certificate.findOne({ certNo }).populate('studentId');
+  const student = cert?.studentId || null;
   const reasons = [];
   const fieldsMatched = [];
   const fieldsMismatched = [];
@@ -33,7 +53,7 @@ export async function verifyCertificate(req, res) {
       // Centralized scoring weights & thresholds allow quick tuning without code edits elsewhere.
       const { weights, nameThresholds, status: statusCfg, criticalFields } = SCORING;
       // Roll number (critical)
-      if (cert.studentId && cert.studentId.rollNo === rollNo) {
+  if (cert.studentId && normalizeId(cert.studentId.rollNo) === rollNo) {
         fieldsMatched.push('rollNo');
         scoreBreakdown.rollNo = weights.rollNo; score += weights.rollNo;
       } else {
@@ -112,8 +132,43 @@ export async function verifyCertificate(req, res) {
     if (!cert) status = 'failed';
     else if (score >= statusCfg2.verifiedMinScore && (!statusCfg2.requireAllCritical || !critical2.some(f => fieldsMismatched.includes(f)))) status = 'verified';
     else status = 'partial';
-    await VerificationLog.create({ certNo, status, score, reasons, fieldsMatched, fieldsMismatched, scoreBreakdown, ocrName: ocr ? ocr.candidateName : undefined, universityId: cert ? cert.universityId : undefined });
-    res.json({ status, score, reasons, fieldsMatched, fieldsMismatched, scoreBreakdown, ocr, certificate: cert ? {
+
+    // Rule-based validation layer (independent of score) - influences anomalyReasons & potential FAKE
+    let ruleResult = null;
+    if (cert) {
+      ruleResult = await validateRules({ cert, student, university: cert.universityId });
+      if (!ruleResult.ok) {
+        reasons.push(...ruleResult.reasons);
+      }
+    }
+
+    // ML anomaly scoring (only if cert exists)
+    let anomalyScore = 0; let anomalyReasons = [];
+    if (cert) {
+      const fv = buildFeatureVector({ cert, student });
+      try {
+        const { anomalyScore: aScore, error, missingModel } = await scoreAnomaly(fv);
+        anomalyScore = aScore || 0;
+        if (missingModel) anomalyReasons.push('Anomaly model missing (default score)');
+        if (error) anomalyReasons.push('Anomaly scoring error');
+      } catch(e){
+        anomalyReasons.push('Anomaly scoring exception');
+      }
+    }
+
+    // Determine final AI status tier
+    // Priority: if rule validation fails -> FAKE; else if anomalyScore > 0.7 -> SUSPICIOUS; else map legacy status
+    let finalStatus = status;
+    if (cert) {
+      if (ruleResult && !ruleResult.ok) finalStatus = 'FAKE';
+      else if (anomalyScore > 0.7) finalStatus = 'SUSPICIOUS';
+      else if (finalStatus === 'verified') finalStatus = 'VERIFIED';
+      else if (finalStatus === 'partial') finalStatus = 'SUSPICIOUS'; // partial now downgraded to SUSPICIOUS in new model
+    }
+
+    const logDoc = { certNo, status: finalStatus.toLowerCase(), score, reasons, fieldsMatched, fieldsMismatched, scoreBreakdown, ocrName: ocr ? ocr.candidateName : undefined, universityId: cert ? cert.universityId : undefined, anomalyScore, anomalyReasons: [...new Set([...anomalyReasons, ...(ruleResult && !ruleResult.ok ? ruleResult.reasons : [])])] };
+    await VerificationLog.create(logDoc);
+    res.json({ status: finalStatus, anomalyScore, anomalyReasons: logDoc.anomalyReasons, score, reasons, fieldsMatched, fieldsMismatched, scoreBreakdown, ocr, certificate: cert ? {
       certNo: cert.certNo,
       issueDate: cert.issueDate,
       marks: cert.marksPercent,

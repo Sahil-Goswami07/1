@@ -3,9 +3,12 @@ import { useAuth } from '../hooks/useAuth.js';
 import { apiVerify } from '../lib/api.js';
 
 const statusStyles = (s) => {
-  if (s === 'verified') return 'bg-green-100 text-green-800';
-  if (s === 'partial') return 'bg-amber-100 text-amber-800';
-  return 'bg-red-100 text-red-800';
+  const val = (s || '').toLowerCase();
+  if (val === 'verified') return 'bg-green-100 text-green-800';
+  if (val === 'partial') return 'bg-amber-100 text-amber-800';
+  if (val === 'suspicious') return 'bg-orange-100 text-orange-800';
+  if (val === 'fake') return 'bg-red-200 text-red-900';
+  return 'bg-slate-200 text-slate-700';
 };
 
 export default function Verify() {
@@ -20,13 +23,13 @@ export default function Verify() {
   const [error, setError] = useState(null);
   const [progress, setProgress] = useState(0);
   const progressTimer = useRef(null);
-  const [history, setHistory] = useState([]); // array of {id, inputs, summary, result}
+  const [history, setHistory] = useState([]);
   const fileInputRef = useRef(null);
   const [dragActive, setDragActive] = useState(false);
+  const [showAnomaly, setShowAnomaly] = useState(false);
 
   const HISTORY_KEY = 'verificationHistory';
 
-  // Load history on mount
   useEffect(() => {
     try {
       const raw = localStorage.getItem(HISTORY_KEY);
@@ -42,9 +45,8 @@ export default function Verify() {
       setProgress(5);
       progressTimer.current = setInterval(() => {
         setProgress(prev => {
-          // Slow down near the end (cap at 90 until response)
           if (prev >= 90) return prev;
-            const increment = prev < 40 ? 8 : prev < 70 ? 5 : 2;
+          const increment = prev < 40 ? 8 : prev < 70 ? 5 : 2;
           return Math.min(prev + increment, 90);
         });
       }, 400);
@@ -57,12 +59,11 @@ export default function Verify() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    setLoading(true); setError(null); setResult(null); setProgress(0);
+    setLoading(true); setError(null); setResult(null); setProgress(0); setShowAnomaly(false);
     try {
       const r = await apiVerify({ file, certNo, rollNo, marks, graduationYear }, token);
       setProgress(100);
       setResult(r);
-      // Persist to history
       const entry = {
         id: Date.now(),
         timestamp: new Date().toISOString(),
@@ -77,12 +78,13 @@ export default function Verify() {
         return next;
       });
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Verification failed');
     } finally { setLoading(false); }
   }
 
   function handleHistoryClick(h) {
     setResult(h.result);
+    setShowAnomaly(false);
     setCertNo(h.inputs.certNo || '');
     setRollNo(h.inputs.rollNo || '');
     setMarks(h.inputs.marks || '');
@@ -190,10 +192,34 @@ export default function Verify() {
                   <div className="flex items-center justify-between flex-wrap gap-3">
                     <div>
                       <h2 className="text-lg font-semibold text-slate-900">Result</h2>
-                      <p className="text-xs text-slate-500">Score: {result.score} / 100</p>
+                      <p className="text-xs text-slate-500">Deterministic Score: {result.score} / 100</p>
+                      {typeof result.anomalyScore === 'number' && (
+                        <p className="text-[11px] mt-1">
+                          <span className="font-medium text-slate-600">Anomaly Score:</span>{' '}
+                          <span className={result.anomalyScore > 0.7 ? 'text-red-600 font-semibold' : result.anomalyScore > 0.45 ? 'text-orange-600 font-semibold' : 'text-green-600 font-semibold'}>
+                            {(result.anomalyScore * 100).toFixed(1)}%
+                          </span>
+                        </p>
+                      )}
                     </div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusStyles(result.status)}`}>{result.status.toUpperCase()}</span>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold tracking-wide ${statusStyles(result.status)}`}>{(result.status || '').toString().toUpperCase() || '—'}</span>
+                      {result.anomalyReasons && result.anomalyReasons.length > 0 && (
+                        <button type="button" onClick={() => setShowAnomaly(!showAnomaly)} className="text-[10px] text-blue-600 hover:underline">
+                          {showAnomaly ? 'Hide' : 'Show'} Anomaly Details
+                        </button>
+                      )}
+                    </div>
                   </div>
+                  {showAnomaly && result.anomalyReasons && result.anomalyReasons.length > 0 && (
+                    <div className="mt-3 border border-slate-200 rounded-md p-3 bg-slate-50">
+                      <h4 className="text-[11px] font-semibold text-slate-700 mb-1">Anomaly Signals</h4>
+                      <ul className="text-[11px] list-disc list-inside text-slate-600 space-y-0.5">
+                        {result.anomalyReasons.map(r => <li key={r}>{r}</li>)}
+                      </ul>
+                      <p className="mt-2 text-[10px] text-slate-400">Higher anomaly score indicates deviation from learned normal patterns.</p>
+                    </div>
+                  )}
                   {result.reasons && result.reasons.length > 0 && (
                     <ul className="mt-3 text-xs text-slate-600 list-disc list-inside">
                       {result.reasons.map(r => <li key={r}>{r}</li>)}
@@ -205,8 +231,8 @@ export default function Verify() {
                         <h3 className="text-xs font-semibold text-slate-500 mb-1">Score Breakdown</h3>
                         <div className="flex flex-wrap gap-2">
                           {Object.entries(result.scoreBreakdown)
-                            .filter(([_,v]) => (typeof v === 'number' || typeof v === 'string'))
-                            .map(([k,v]) => (
+                            .filter(([_, v]) => (typeof v === 'number' || typeof v === 'string'))
+                            .map(([k, v]) => (
                               <span key={k} className="px-2 py-1 rounded bg-slate-100 text-[10px] font-medium text-slate-700">{k}:{v}</span>
                             ))}
                         </div>
@@ -225,11 +251,11 @@ export default function Verify() {
                   <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                     <div>
                       <h4 className="font-semibold text-slate-700 mb-1">Matched Fields</h4>
-                      <div className="flex flex-wrap gap-2">{(result.fieldsMatched||[]).map(f => <span key={f} className="px-2 py-1 rounded bg-green-100 text-green-800">{f}</span>)}</div>
+                      <div className="flex flex-wrap gap-2">{(result.fieldsMatched || []).map(f => <span key={f} className="px-2 py-1 rounded bg-green-100 text-green-800">{f}</span>)}</div>
                     </div>
                     <div>
                       <h4 className="font-semibold text-slate-700 mb-1">Mismatched Fields</h4>
-                      <div className="flex flex-wrap gap-2">{(result.fieldsMismatched||[]).map(f => <span key={f} className="px-2 py-1 rounded bg-red-100 text-red-800">{f}</span>)}</div>
+                      <div className="flex flex-wrap gap-2">{(result.fieldsMismatched || []).map(f => <span key={f} className="px-2 py-1 rounded bg-red-100 text-red-800">{f}</span>)}</div>
                     </div>
                   </div>
                 </div>
@@ -261,7 +287,7 @@ export default function Verify() {
                       <p><strong>OCR Enrollment:</strong> {result.ocr.enrollmentNumber}</p>
                       <details className="mt-2">
                         <summary className="cursor-pointer text-blue-600">Full Text</summary>
-                        <pre className="mt-2 whitespace-pre-wrap max-h-64 overflow-auto bg-slate-50 p-2 rounded border border-slate-200">{result.ocr.fullText?.slice(0,500) || ''}{result.ocr.fullText && result.ocr.fullText.length>500 ? '...' : ''}</pre>
+                        <pre className="mt-2 whitespace-pre-wrap max-h-64 overflow-auto bg-slate-50 p-2 rounded border border-slate-200">{result.ocr.fullText?.slice(0, 500) || ''}{result.ocr.fullText && result.ocr.fullText.length > 500 ? '...' : ''}</pre>
                       </details>
                     </div>
                   </div>
@@ -282,7 +308,7 @@ export default function Verify() {
                 <li key={h.id}>
                   <button type="button" onClick={() => handleHistoryClick(h)} className="w-full text-left border border-slate-200 rounded-md p-2 hover:bg-slate-50 focus:outline-none focus:ring-1 focus:ring-blue-500">
                     <div className="flex items-center justify-between gap-2">
-                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-semibold ${statusStyles(h.summary.status)}`}>{h.summary.status.toUpperCase()}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-semibold ${statusStyles(h.summary.status)}`}>{(h.summary.status || '').toString().toUpperCase() || '—'}</span>
                       <span className="text-[10px] text-slate-400">{new Date(h.timestamp).toLocaleTimeString()}</span>
                     </div>
                     <div className="mt-1 truncate font-medium text-slate-700">{h.summary.certNo || '—'} {h.summary.rollNo && <span className="text-slate-400">• {h.summary.rollNo}</span>}</div>
