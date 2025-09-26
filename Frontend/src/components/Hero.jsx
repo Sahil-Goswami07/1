@@ -15,7 +15,7 @@ export default function Hero({
           {/* Left Content */}
           <div>
             <p className="text-sm font-medium text-slate-500 mb-3">
-              Trusted · Fast · Transparent
+              Trusted · Fast · Transparent .
             </p>
 
             <h1 className="text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-900">
