@@ -40,6 +40,15 @@ const UniversityDashboard = () => {
     setUploading(true); setImportResult(null);
     try { const r = await uploadExcel(file, token); setImportResult(r); } catch (e) { setImportResult({ error: e.message }); } finally { setUploading(false); }
   };
+  const downloadTemplate = (type) => {
+    const url = type === 'xlsx' ? 'http://localhost:5000/api/templates/import/xlsx' : 'http://localhost:5000/api/templates/import/csv';
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = type === 'xlsx' ? 'bulk_import_template.xlsx' : 'bulk_import_template.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
   return (
     <div className="bg-slate-50 min-h-screen">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -67,14 +76,36 @@ const UniversityDashboard = () => {
         {/* Upload Section */}
         <div className="bg-white border border-slate-200 rounded-lg p-6 mb-8">
           <h2 className="text-lg font-semibold text-slate-900 mb-4">Bulk Import (Excel)</h2>
-          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-            <input type="file" accept=".xlsx,.xls" onChange={e=>setFile(e.target.files[0])} className="text-sm" />
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-start sm:items-center">
+            <input type="file" accept=".xlsx,.xls,.csv" onChange={e=>setFile(e.target.files[0])} className="text-sm" />
             <button disabled={uploading || !file} onClick={handleUpload} className="px-3 py-2 bg-blue-600 text-white rounded text-sm disabled:opacity-50">
               {uploading ? 'Uploading...' : 'Upload & Import'}
             </button>
+            <button type="button" onClick={()=>downloadTemplate('xlsx')} className="px-3 py-2 bg-slate-700 text-white rounded text-sm">Download XLSX Template</button>
+            <button type="button" onClick={()=>downloadTemplate('csv')} className="px-3 py-2 bg-slate-500 text-white rounded text-sm">Download CSV Template</button>
       {importResult && <p className="text-xs text-slate-600">{importResult.error ? importResult.error : `Students: ${importResult.insertedStudents}/${importResult.students} (dup ${importResult.duplicateStudents}) | Certs: ${importResult.insertedCerts}/${importResult.certificates} (dup ${importResult.duplicateCerts})`}</p>}
           </div>
-          <p className="mt-3 text-xs text-slate-500">Expected columns: rollNo, name, course, graduationYear, certNo, marks, issueDate.</p>
+          <p className="mt-3 text-xs text-slate-500">Expected columns (XLSX or CSV): rollNo, enrollmentNo (optional), name, fatherName (optional), course, graduationYear, certNo, marks, issueDate. You can upload either format.</p>
+          {importResult && importResult.errors && importResult.errors.length > 0 && (
+            <div className="mt-4 border border-amber-300 bg-amber-50 rounded p-3 max-h-48 overflow-auto">
+              <p className="text-xs font-semibold text-amber-800 mb-2">Validation Errors ({importResult.errors.length}):</p>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-amber-700"><th className="text-left pr-2">Row</th><th className="text-left pr-2">Field</th><th className="text-left">Message</th></tr>
+                </thead>
+                <tbody>
+                  {importResult.errors.slice(0,200).map((e,i)=>(
+                    <tr key={i} className="odd:bg-amber-100/40">
+                      <td className="pr-2">{e.row}</td>
+                      <td className="pr-2">{e.field}</td>
+                      <td>{e.message}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {importResult.errors.length > 200 && <p className="text-[10px] text-amber-700 mt-1">Showing first 200 errors… refine your file.</p>}
+            </div>
+          )}
         </div>
 
         {/* Recent Verifications Table */}

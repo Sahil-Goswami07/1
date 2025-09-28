@@ -57,5 +57,46 @@ app.use('/api/verify-legacy', legacyVerify); // keeps OCR + metadata + anomaly p
 import verifyAPIRouter from './routes/verifyDB.js';
 app.use('/api/verify', verifyAPIRouter);
 
+// Template download endpoints (simple, no auth yet – optionally protect later)
+import path from 'path';
+import fs from 'fs';
+import xlsx from 'xlsx';
+import { fileURLToPath } from 'url';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const templatesDir = path.join(__dirname, 'templates');
+app.get('/api/templates/import/csv', (req, res) => {
+	const p = path.join(templatesDir, 'bulk_import_template.csv');
+	if (!fs.existsSync(p)) {
+		if (process.env.DEBUG_EXCEL === '1') console.log('[template] CSV missing at', p);
+		return res.status(404).json({ message: 'Template not found' });
+	}
+	res.download(p, 'bulk_import_template.csv');
+});
+app.get('/api/templates/import/xlsx', (req, res) => {
+	try {
+		const headers = ['rollNo','enrollmentNo','name','fatherName','course','graduationYear','certNo','marks','issueDate'];
+		const sample = [
+			{
+				rollNo: '23EJCEC301', enrollmentNo: '23E1JCECF40P301', name: 'KANIKA MAHESHWARI', fatherName: 'VIMAL MALPANI', course: 'B.TECH CSE', graduationYear: 2027, certNo: 'RTU-2025-III-23EJCEC301', marks: 84.2, issueDate: '2025-06-15'
+			},
+			{
+				rollNo: '23EJCCS189', enrollmentNo: '23E1JCCSM45P189', name: 'SAHIL GIRI', fatherName: 'JITENDRA GIRI', course: 'B.TECH CSE', graduationYear: 2028, certNo: 'RTU-2024-II-23EJCCS189', marks: 78.5, issueDate: '2024-12-20'
+			}
+		];
+		const ws = xlsx.utils.json_to_sheet(sample, { header: headers });
+		// Ensure header order explicitly
+		ws['!cols'] = headers.map(()=>({ wch: 18 }));
+		const wb = xlsx.utils.book_new();
+		xlsx.utils.book_append_sheet(wb, ws, 'Import');
+		const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+		res.setHeader('Content-Disposition', 'attachment; filename="bulk_import_template.xlsx"');
+		res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+		return res.send(buf);
+	} catch (e) {
+		return res.status(500).json({ message: 'Failed to build template', error: e.message });
+	}
+});
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log('API running on :'+PORT));

@@ -73,6 +73,32 @@ export async function runOCR(file) {
   let fatherName = 'Unknown';
   let serialNumber = 'Unknown';
 
+  // Helper to normalize a probable person name (collapse spaces, strip trailing label fragments)
+  function cleanName(raw) {
+    if (!raw) return raw;
+    return raw
+      .replace(/\b(FATHER'?S|MOTHER'?S)\b.*$/i,'') // remove if a second label bled in
+      .replace(/[^A-Z .'\-]/gi,' ') // keep letters & common punctuation
+      .replace(/\s+/g,' ') // collapse spaces
+      .trim()
+      .toUpperCase();
+  }
+
+  // Early broad extraction (handles cases where Name and Father's Name share a line):
+  // e.g. "Name : GOUTAM KUMAR JHA  Father's Name : SATYENDRA JHA"
+  try {
+    const jointNameLine = text.match(/Name\s*:\s*([^\n]+?)(?:Father'?s\s+Name|Roll\s*No|Enrollment\s*No|College\s*Name|$)/i);
+    if (jointNameLine) {
+      const possible = cleanName(jointNameLine[1]);
+      if (possible && possible.length >= 3) candidateName = possible;
+    }
+    const jointFatherLine = text.match(/Father'?s\s+Name\s*:\s*([^\n]+?)(?:Name|Roll\s*No|Enrollment\s*No|College\s*Name|$)/i);
+    if (jointFatherLine) {
+      const fpos = cleanName(jointFatherLine[1]);
+      if (fpos && fpos.length >= 3) fatherName = fpos;
+    }
+  } catch(_) { /* ignore */ }
+
   try {
     const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 
@@ -84,12 +110,22 @@ export async function runOCR(file) {
     for (const rawLine of lines) {
       const line = rawLine.replace(/\s+/g,' ');
       if (candidateName === 'Unknown') {
-        const m = line.match(nameOfCandidateRe);
-        if (m && !/UNIVERSITY|COLLEGE/i.test(m[1])) candidateName = m[1].trim();
+        // Dedicated simple label on its own line: "Name : <value>"
+        const simpleName = line.match(/^Name\s*[:\-]\s*([A-Z][A-Z .']{2,})$/i);
+        if (simpleName && !/UNIVERSITY|COLLEGE/i.test(simpleName[1])) {
+          candidateName = cleanName(simpleName[1]);
+        } else {
+          const m = line.match(nameOfCandidateRe);
+          if (m && !/UNIVERSITY|COLLEGE/i.test(m[1])) candidateName = cleanName(m[1]);
+        }
       }
       if (fatherName === 'Unknown') {
-        const m = line.match(fatherNameRe);
-        if (m) fatherName = m[1].trim();
+        const simpleFather = line.match(/^Father'?s\s+Name\s*[:\-]\s*([A-Z][A-Z .']{2,})$/i);
+        if (simpleFather) fatherName = cleanName(simpleFather[1]);
+        else {
+          const m = line.match(fatherNameRe);
+          if (m) fatherName = cleanName(m[1]);
+        }
       }
       if (serialNumber === 'Unknown') {
         const m = line.match(serialRe);
@@ -101,7 +137,7 @@ export async function runOCR(file) {
     // Fallback: previous generic pattern if still unknown
     if (candidateName === 'Unknown') {
       const generic = text.match(/(?:Candidate|Student)?\s*Name\s*[:\-]\s*([A-Z][A-Z .']{2,})/i);
-      if (generic && !/UNIVERSITY|COLLEGE/i.test(generic[1])) candidateName = generic[1].trim();
+      if (generic && !/UNIVERSITY|COLLEGE/i.test(generic[1])) candidateName = cleanName(generic[1]);
     }
   } catch (e) { /* ignore */ }
 

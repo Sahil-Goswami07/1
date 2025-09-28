@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eduauth.example.com/schemas/importRecord.schema.json",
+  "title": "Bulk Import Row",
+  "type": "object",
+  "required": ["rollNo", "name"],
+  "properties": {
+    "rollNo": {
+      "type": "string",
+      "pattern": "^(\\d{2})EJ[A-Z]{3,4}\\d{3}$",
+      "description": "Primary student roll number (YYEJ + branch + 3 digits)."
+    },
+    "enrollmentNo": {
+      "type": "string",
+      "pattern": "^(\\d{2})E1J[A-Z]{3,4}[A-Z]\\d{2}P\\d{3}$",
+      "description": "Enrollment number pattern inferred; optional, uniqueness enforced per university when present.",
+      "nullable": true
+    },
+    "name": { "type": "string", "minLength": 2 },
+    "fatherName": { "type": "string", "minLength": 2 },
+    "course": { "type": ["string", "null"], "description": "Program or course descriptor" },
+    "graduationYear": {
+      "type": ["integer", "null"],
+      "minimum": 2000,
+      "maximum": 2100
+    },
+    "certNo": { "type": "string", "minLength": 3 },
+    "marks": {
+      "type": ["number", "string"],
+      "pattern": "^([0-9]{1,3}(\\.[0-9]+)?)$",
+      "description": "Percentage / aggregate 0-100"
+    },
+    "issueDate": {
+      "type": "string",
+      "format": "date",
+      "description": "ISO date string yyyy-mm-dd"
+    }
+  },
+  "additionalProperties": false
+}

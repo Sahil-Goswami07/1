@@ -39,8 +39,23 @@ export async function verifyCertificate(req, res) {
   if (certNo) certNo = normalizeId(certNo);
   if (rollNo) rollNo = normalizeId(rollNo);
   if (!certNo || !rollNo) return res.status(400).json({ error: 'certNo and rollNo required (either sent or derivable from OCR / enrollment fallback)' });
-  const cert = await Certificate.findOne({ certNo }).populate('studentId');
-  const student = cert?.studentId || null;
+  // Scope lookup by universityId if available from auth (preferred)
+  let cert = null; let student = null; let lookupMode = 'scoped';
+  if (req.user && req.user.universityId) {
+    cert = await Certificate.findOne({ certNo, universityId: req.user.universityId }).populate('studentId');
+  } else {
+    cert = await Certificate.findOne({ certNo }).populate('studentId');
+    lookupMode = 'unscoped-noauth';
+  }
+  if (!cert) {
+    // Fallback: attempt unscoped lookup to diagnose potential wrong university usage
+    const anyCert = await Certificate.findOne({ certNo }).populate('studentId');
+    if (anyCert) {
+      lookupMode = 'found-different-university';
+      cert = anyCert; // we still use it for scoring but flag reason
+    }
+  }
+  if (cert && cert.studentId) student = cert.studentId;
   const reasons = [];
   const fieldsMatched = [];
   const fieldsMismatched = [];
@@ -48,6 +63,8 @@ export async function verifyCertificate(req, res) {
   let score = 0;
     if (!cert) {
       reasons.push('Certificate not found');
+    } else if (lookupMode === 'found-different-university') {
+      reasons.push('Certificate belongs to a different university');
     }
     if (cert) {
       // Centralized scoring weights & thresholds allow quick tuning without code edits elsewhere.
