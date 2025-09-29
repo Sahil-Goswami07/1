@@ -17,6 +17,7 @@ import DashboardLayout from './layouts/DashboardLayout'
 import CertificateUpload from './components/certificateUpload'
 import Verify from './pages/Verify.jsx'
 import UniversityApply from './pages/UniversityApply.jsx'
+import Logs from './pages/Logs.jsx'
 
 export default function App() {
   return (
@@ -38,6 +39,7 @@ export default function App() {
           <Route path="/university/apply" element={<MainLayout><UniversityApply /></MainLayout>} />
           <Route path="/admin" element={<ProtectedRoute roles={['superAdmin']}><DashboardLayout><AdminDashboard /></DashboardLayout></ProtectedRoute>} />
           <Route path="/university" element={<ProtectedRoute roles={['universityAdmin','superAdmin']}><DashboardLayout><UniversityDashboard /></DashboardLayout></ProtectedRoute>} />
+          <Route path="/logs" element={<ProtectedRoute roles={['universityAdmin','superAdmin']}><DashboardLayout><Logs /></DashboardLayout></ProtectedRoute>} />
 
           {/* Fallback for unmatched routes */}
           <Route path="*" element={

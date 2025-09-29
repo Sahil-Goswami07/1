@@ -9,7 +9,9 @@
     "dev": "nodemon app.js",
     "seed:super": "node ./scripts/seedSuperAdmin.js",
     "migrate:passwords": "node ./scripts/migratePasswords.js",
-    "reset:admin": "node ./scripts/resetAdmin.js"
+    "reset:admin": "node ./scripts/resetAdmin.js",
+    "test:scoring": "node ./tests/scoring.test.js",
+    "seed:demo": "node ./scripts/seedDemoData.js"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",

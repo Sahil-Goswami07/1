@@ -57,6 +57,11 @@ app.use('/api/verify-legacy', legacyVerify); // keeps OCR + metadata + anomaly p
 import verifyAPIRouter from './routes/verifyDB.js';
 app.use('/api/verify', verifyAPIRouter);
 
+// Metrics endpoint (protected) – quick aggregation for dashboard
+import { getMetrics } from './controllers/metricsController.js';
+import { authenticate, authorize } from './middlewares/authMiddleware.js';
+app.get('/api/metrics', authenticate, authorize('universityAdmin','superAdmin'), getMetrics);
+
 // Template download endpoints (simple, no auth yet – optionally protect later)
 import path from 'path';
 import fs from 'fs';

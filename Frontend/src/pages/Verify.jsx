@@ -27,6 +27,7 @@ export default function Verify() {
   const fileInputRef = useRef(null);
   const [dragActive, setDragActive] = useState(false);
   const [showAnomaly, setShowAnomaly] = useState(false);
+  const [showReasons, setShowReasons] = useState(false); // added: controls reasons panel visibility
 
   const HISTORY_KEY = 'verificationHistory';
 
@@ -59,7 +60,7 @@ export default function Verify() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    setLoading(true); setError(null); setResult(null); setProgress(0); setShowAnomaly(false);
+  setLoading(true); setError(null); setResult(null); setProgress(0); setShowAnomaly(false); setShowReasons(false);
     try {
       const r = await apiVerify({ file, certNo, rollNo, marks, graduationYear }, token);
       setProgress(100);
@@ -84,7 +85,8 @@ export default function Verify() {
 
   function handleHistoryClick(h) {
     setResult(h.result);
-    setShowAnomaly(false);
+  setShowAnomaly(false);
+  setShowReasons(false);
     setCertNo(h.inputs.certNo || '');
     setRollNo(h.inputs.rollNo || '');
     setMarks(h.inputs.marks || '');
@@ -203,13 +205,26 @@ export default function Verify() {
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-1">
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold tracking-wide ${statusStyles(result.status)}`}>{(result.status || '').toString().toUpperCase() || '—'}</span>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold tracking-wide shadow-sm ${statusStyles(result.status)}`}>{(result.status || '').toString().toUpperCase() || '—'}</span>
+                        {result.status && (
+                          <button type="button" onClick={() => setShowReasons(r => !r)} className="text-[10px] text-slate-500 hover:text-slate-700 underline">
+                            {showReasons ? 'Hide Reasons' : 'Show Reasons'}
+                          </button>
+                        )}
+                      </div>
                       {result.anomalyReasons && result.anomalyReasons.length > 0 && (
                         <button type="button" onClick={() => setShowAnomaly(!showAnomaly)} className="text-[10px] text-blue-600 hover:underline">
                           {showAnomaly ? 'Hide' : 'Show'} Anomaly Details
                         </button>
                       )}
                     </div>
+                  </div>
+                  {/* Status legend for judges */}
+                  <div className="mt-3 flex flex-wrap gap-2 text-[9px] text-slate-500">
+                    <span><span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1"></span>VERIFIED = high confidence</span>
+                    <span><span className="inline-block w-2 h-2 rounded-full bg-amber-500 mr-1"></span>SUSPICIOUS = needs review</span>
+                    <span><span className="inline-block w-2 h-2 rounded-full bg-red-600 mr-1"></span>FAKE = rule/anomaly failed</span>
                   </div>
                   {showAnomaly && result.anomalyReasons && result.anomalyReasons.length > 0 && (
                     <div className="mt-3 border border-slate-200 rounded-md p-3 bg-slate-50">
@@ -220,10 +235,13 @@ export default function Verify() {
                       <p className="mt-2 text-[10px] text-slate-400">Higher anomaly score indicates deviation from learned normal patterns.</p>
                     </div>
                   )}
-                  {result.reasons && result.reasons.length > 0 && (
-                    <ul className="mt-3 text-xs text-slate-600 list-disc list-inside">
-                      {result.reasons.map(r => <li key={r}>{r}</li>)}
-                    </ul>
+                  {showReasons && result.reasons && result.reasons.length > 0 && (
+                    <div className="mt-3 border border-slate-200 rounded-md p-3 bg-white/50">
+                      <h4 className="text-[11px] font-semibold text-slate-700 mb-1">Reasons / Explanations</h4>
+                      <ul className="text-[11px] list-disc list-inside text-slate-600 space-y-0.5">
+                        {result.reasons.map(r => <li key={r}>{r}</li>)}
+                      </ul>
+                    </div>
                   )}
                   {result.scoreBreakdown && (
                     <div className="mt-4 space-y-2">
