@@ -54,12 +54,38 @@ export async function importExcel(buffer, universityId) {
     if (!certNo && enrollmentNo) { certNo = enrollmentNo; normalization.certNoFromEnrollment++; }
 
     const graduationYear = graduationYearRaw ? Number(String(graduationYearRaw).trim()) : undefined;
-    // Issue date parse
+    // Issue date parse with Excel serial & common formats support
     const rawIssue = r.issueDate || r.IssueDate || r['Issue Date'];
     let issueDate = null;
-    if (rawIssue) {
-      const parsed = new Date(rawIssue);
-      if (!isNaN(parsed.getTime())) issueDate = parsed; else errors.push({ row: rowIndex, field: 'issueDate', message: 'Invalid date format' });
+    if (rawIssue !== undefined && rawIssue !== null && rawIssue !== '') {
+      const tryParse = (val) => {
+        // Excel serial date numbers (assuming 1900 system) OR numeric string
+        if (typeof val === 'number' || (/^\d+$/.test(String(val)) && String(val).length <= 5)) {
+          const n = Number(val);
+          // Basic sanity: Excel serial usually > 30000 for years > 1980; allow >= 20000
+          if (!isNaN(n) && n > 20000 && n < 80000) {
+            // Excel incorrectly counts 1900 as leap year; xlsx utils usually handle, but manual: serial 1 => 1899-12-31
+            const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+            const ms = n * 86400000; // days to ms
+            return new Date(excelEpoch.getTime() + ms);
+          }
+        }
+        // Try ISO / native
+        const native = new Date(val);
+        if (!isNaN(native.getTime())) return native;
+        // Try dd/MM/yyyy or dd-MM-yyyy
+        if (typeof val === 'string') {
+          const m = val.trim().match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+          if (m) {
+            const [_, d, mo, y] = m;
+            const dt = new Date(Number(y), Number(mo)-1, Number(d));
+            if (!isNaN(dt.getTime())) return dt;
+          }
+        }
+        return null;
+      };
+      const parsed = tryParse(rawIssue);
+      if (parsed) issueDate = parsed; else errors.push({ row: rowIndex, field: 'issueDate', message: 'Invalid date format' });
     }
 
     // Field validations

@@ -1,203 +1,288 @@
-import Certificate from '../models/Certificate.js';
-import Student from '../models/Student.js';
-import VerificationLog from '../models/VerificationLog.js';
-import { runOCR } from '../services/ocr.js';
-import fileUpload from 'express-fileupload';
+/**
+ * controllers/verifyController.js
+ *
+ * Certificate verification pipeline:
+ *  1. Receive uploaded certificate file (optional)
+ *  2. Run OCR to extract fields
+ *  3. Look up the certificate + student in the database
+ *  4. Score each field deterministically (roll, year, marks, name)
+ *  5. Return a structured result with per-field breakdown
+ *
+ * Removed: ML anomaly scoring, blockchain references.
+ * Kept:    OCR + strict deterministic matching.
+ */
+
+import Certificate        from '../models/Certificate.js';
+import VerificationLog    from '../models/VerificationLog.js';
+import { runOCR }         from '../services/ocr.js';
+import fileUpload         from 'express-fileupload';
 import { SCORING, POLICY } from '../config/scoring.js';
 import { nameSimilarity } from '../utils/textNormalize.js';
-import { validateRules } from '../utils/ruleValidator.js';
-import { buildFeatureVector, scoreAnomaly } from '../services/mlAnomaly.js';
+import { validateRules }  from '../utils/ruleValidator.js';
 
 // Middleware for optional file upload (used only on this route)
-export const verifyFileMiddleware = fileUpload({ useTempFiles: true, tempFileDir: './Backend/tmp', createParentPath: true });
+export const verifyFileMiddleware = fileUpload({
+  useTempFiles: true,
+  tempFileDir: './Backend/tmp',
+  createParentPath: true,
+});
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Strip everything except alphanumerics, uppercase. */
+const normalizeId = (v) =>
+  typeof v === 'string' ? v.replace(/[^A-Za-z0-9]/g, '').toUpperCase() : v;
+
+// ---------------------------------------------------------------------------
+// Main handler
+// ---------------------------------------------------------------------------
 
 export async function verifyCertificate(req, res) {
   try {
-  let { certNo, rollNo, marks, graduationYear } = req.body;
+    let { certNo, rollNo, marks, graduationYear } = req.body;
+
+    // ── Step 1: OCR ─────────────────────────────────────────────────────────
     let ocr = null;
     if (req.files && req.files.certificate) {
       ocr = await runOCR(req.files.certificate);
-      // Attempt to infer certNo / rollNo from OCR if missing
+
+      // Infer identifiers from OCR if not supplied by the caller
       if (!rollNo) {
-        if (ocr.correctedRollNumber && ocr.correctedRollNumber !== 'Unknown') rollNo = ocr.correctedRollNumber;
-        else if (ocr.rollNumber && ocr.rollNumber !== 'Unknown') rollNo = ocr.rollNumber;
+        rollNo = ocr.correctedRollNumber !== 'Unknown'
+          ? ocr.correctedRollNumber
+          : ocr.rollNumber !== 'Unknown' ? ocr.rollNumber : undefined;
       }
-  if (!certNo) {
-    if (ocr.correctedEnrollmentNumber && ocr.correctedEnrollmentNumber !== 'Unknown') certNo = ocr.correctedEnrollmentNumber;
-    else if (ocr.enrollmentNumber && ocr.enrollmentNumber !== 'Unknown') certNo = ocr.enrollmentNumber;
-  }
-  // Fallback: use serial number if enrollment not found
-  if (!certNo && ocr.serialNumber && ocr.serialNumber !== 'Unknown') {
-    certNo = ocr.serialNumber;
-    // Tag that we inferred from serial so downstream (future) logic could differentiate
-    if (!req.inferredSources) req.inferredSources = [];
-    req.inferredSources.push('certNo:serialNumber');
-  }
+      if (!certNo) {
+        certNo = ocr.correctedEnrollmentNumber !== 'Unknown'
+          ? ocr.correctedEnrollmentNumber
+          : ocr.enrollmentNumber !== 'Unknown' ? ocr.enrollmentNumber
+          : ocr.serialNumber !== 'Unknown' ? ocr.serialNumber : undefined;
+      }
     }
-  // Basic normalization of identifiers (strip spaces & non-alphanumerics, uppercase) to improve match chance
-  const normalizeId = v => typeof v === 'string' ? v.replace(/[^A-Za-z0-9]/g, '').toUpperCase() : v;
-  if (certNo) certNo = normalizeId(certNo);
-  if (rollNo) rollNo = normalizeId(rollNo);
-  if (!certNo || !rollNo) return res.status(400).json({ error: 'certNo and rollNo required (either sent or derivable from OCR / enrollment fallback)' });
-  // Scope lookup by universityId if available from auth (preferred)
-  let cert = null; let student = null; let lookupMode = 'scoped';
-  if (req.user && req.user.universityId) {
-    cert = await Certificate.findOne({ certNo, universityId: req.user.universityId }).populate('studentId');
-  } else {
-    cert = await Certificate.findOne({ certNo }).populate('studentId');
-    lookupMode = 'unscoped-noauth';
-  }
-  if (!cert) {
-    // Fallback: attempt unscoped lookup to diagnose potential wrong university usage
-    const anyCert = await Certificate.findOne({ certNo }).populate('studentId');
-    if (anyCert) {
-      lookupMode = 'found-different-university';
-      cert = anyCert; // we still use it for scoring but flag reason
+
+    // ── Step 2: Normalize identifiers ───────────────────────────────────────
+    if (certNo) certNo = normalizeId(certNo);
+    if (rollNo) rollNo = normalizeId(rollNo);
+
+    if (!certNo || !rollNo) {
+      return res.status(400).json({
+        error: 'certNo and rollNo are required (send directly or let OCR derive them)',
+      });
     }
-  }
-  if (cert && cert.studentId) student = cert.studentId;
-  const reasons = [];
-  const fieldsMatched = [];
-  const fieldsMismatched = [];
-  const scoreBreakdown = {};
-  let score = 0;
+
+    // ── Step 3: Database lookup ──────────────────────────────────────────────
+    let cert       = null;
+    let lookupMode = 'scoped';
+
+    if (req.user && req.user.universityId) {
+      cert = await Certificate.findOne({ certNo, universityId: req.user.universityId })
+        .populate('studentId');
+    } else {
+      cert = await Certificate.findOne({ certNo }).populate('studentId');
+      lookupMode = 'unscoped-noauth';
+    }
+
     if (!cert) {
-      reasons.push('Certificate not found');
+      // Check whether the cert exists under a different university (diagnostic only)
+      const anyCert = await Certificate.findOne({ certNo }).populate('studentId');
+      if (anyCert) {
+        lookupMode = 'found-different-university';
+        cert = anyCert;
+      }
+    }
+
+    const student = cert?.studentId ?? null;
+
+    // ── Step 4: Field scoring ────────────────────────────────────────────────
+    const reasons          = [];
+    const fieldsMatched    = [];
+    const fieldsMismatched = [];
+    const scoreBreakdown   = {};
+    let   score            = 0;
+
+    if (!cert) {
+      reasons.push('Certificate not found in database');
     } else if (lookupMode === 'found-different-university') {
       reasons.push('Certificate belongs to a different university');
     }
+
     if (cert) {
-      // Centralized scoring weights & thresholds allow quick tuning without code edits elsewhere.
-      const { weights, nameThresholds, status: statusCfg, criticalFields } = SCORING;
-      // Roll number (critical)
-  if (cert.studentId && normalizeId(cert.studentId.rollNo) === rollNo) {
+      const { weights, nameThresholds, criticalFields } = SCORING;
+
+      // ── Roll number (hard-critical) ────────────────────────────────────────
+      if (student && normalizeId(student.rollNo) === rollNo) {
         fieldsMatched.push('rollNo');
-        scoreBreakdown.rollNo = weights.rollNo; score += weights.rollNo;
+        scoreBreakdown.rollNo = weights.rollNo;
+        score += weights.rollNo;
       } else {
         fieldsMismatched.push('rollNo');
         reasons.push('Roll number mismatch');
+        scoreBreakdown.rollNo = 0;
       }
-      // Graduation year
-      const storedGrad = cert.studentId ? cert.studentId.graduationYear : undefined;
+
+      // ── Graduation year ────────────────────────────────────────────────────
+      const storedGrad = student?.graduationYear;
       if (graduationYear) graduationYear = Number(graduationYear);
+
       if (storedGrad) {
         if (!graduationYear || graduationYear === storedGrad) {
           fieldsMatched.push('graduationYear');
-          scoreBreakdown.graduationYear = weights.graduationYear; score += weights.graduationYear;
+          scoreBreakdown.graduationYear = weights.graduationYear;
+          score += weights.graduationYear;
         } else {
           fieldsMismatched.push('graduationYear');
           reasons.push('Graduation year mismatch');
+          scoreBreakdown.graduationYear = 0;
         }
       }
-      // Marks logic with policy: prefer explicit user match; else implicit full credit if enabled; else OCR fallback; else presence partial
+
+      // ── Marks ──────────────────────────────────────────────────────────────
       if (marks) {
         const suppliedMarks = Number(marks);
         if (!isNaN(suppliedMarks) && cert.marksPercent != null) {
           if (Math.abs(suppliedMarks - cert.marksPercent) <= 1) {
             fieldsMatched.push('marks');
-            scoreBreakdown.marks = weights.marks; score += weights.marks;
+            scoreBreakdown.marks = weights.marks;
+            score += weights.marks;
           } else {
             fieldsMismatched.push('marks');
             reasons.push('Marks mismatch');
+            scoreBreakdown.marks = 0;
           }
         }
       } else if (cert.marksPercent != null) {
-        let awarded = false;
-        if (!marks && POLICY.implicitFullMarksIfStored) {
+        let marksAwarded = false;
+
+        if (POLICY.implicitFullMarksIfStored) {
           fieldsMatched.push('marks');
-          scoreBreakdown.marks = weights.marks; score += weights.marks;
-          scoreBreakdown.marksReason = 'implicitFull (stored marks present)';
-          awarded = true;
+          scoreBreakdown.marks = weights.marks;
+          scoreBreakdown.marksReason = 'implicit (stored marks present, none supplied)';
+          score += weights.marks;
+          marksAwarded = true;
         }
-        // OCR fallback if not already awarded
-        if (!awarded && POLICY.allowOCRMarksFallback && ocr && typeof ocr.marks === 'number') {
+
+        if (!marksAwarded && POLICY.allowOCRMarksFallback && ocr && typeof ocr.marks === 'number') {
           const diff = Math.abs(ocr.marks - cert.marksPercent);
           if (diff <= (POLICY.ocrMarksTolerance ?? 2)) {
             fieldsMatched.push('marks');
-            scoreBreakdown.marks = weights.marks; score += weights.marks;
-            scoreBreakdown.marksReason = 'ocrFallback';
-            awarded = true;
+            scoreBreakdown.marks = weights.marks;
+            scoreBreakdown.marksReason = 'OCR fallback';
+            score += weights.marks;
+            marksAwarded = true;
           }
         }
-        if (!awarded) {
-          scoreBreakdown.marksPresence = weights.marksPresence; score += weights.marksPresence;
+
+        if (!marksAwarded) {
+          scoreBreakdown.marksPresence = weights.marksPresence;
+          score += weights.marksPresence;
         }
       }
-      // Name fuzzy similarity (soft-critical): we allow partial credit and don't block verification if other critical fields pass.
-      if (cert.studentId && ocr && ocr.candidateName && ocr.candidateName !== 'Unknown') {
-        const { similarity, details } = nameSimilarity(ocr.candidateName, cert.studentId.name);
-        const pct = Number((similarity * 100).toFixed(1));
-        scoreBreakdown.nameSimilarity = pct;
-        scoreBreakdown.nameTokens = { o: details.oTokens, s: details.sTokens }; // optional diagnostics
-        if (similarity >= nameThresholds.full || (details.sTokens.length <= 2 && similarity >= nameThresholds.shortNameFull)) {
+
+      // ── Name (soft-critical, strict Levenshtein matching) ─────────────────
+      if (student && ocr && ocr.candidateName && ocr.candidateName !== 'Unknown') {
+        const { similarity, details, compareResult } = nameSimilarity(
+          ocr.candidateName,
+          student.name
+        );
+
+        // similarity is 0–1 (compareNames score / 100); nameScore is 0–100
+        const nameScore = compareResult.name_similarity_score;
+
+        scoreBreakdown.nameSimilarityScore = nameScore;
+        scoreBreakdown.nameMatchedTokens   = compareResult.matched_tokens;
+        scoreBreakdown.nameMismatchedTokens= compareResult.mismatched_tokens;
+        scoreBreakdown.nameReason          = compareResult.reason;
+
+        if (nameScore >= nameThresholds.full) {
           fieldsMatched.push('name');
-          scoreBreakdown.name = weights.name; score += weights.name;
-        } else if (similarity >= nameThresholds.partial) {
-          scoreBreakdown.namePartial = weights.namePartial; score += weights.namePartial;
-          reasons.push(`Name partial match (${pct}%)`);
+          scoreBreakdown.name = weights.name;
+          score += weights.name;
+        } else if (nameScore >= nameThresholds.partial) {
+          scoreBreakdown.namePartial = weights.namePartial;
+          score += weights.namePartial;
+          reasons.push(`Name partial match (score ${nameScore}/100): ${compareResult.reason}`);
         } else {
           fieldsMismatched.push('name');
-          reasons.push(`Name mismatch (${pct}%)`);
+          reasons.push(`Name mismatch (score ${nameScore}/100): ${compareResult.reason}`);
+          scoreBreakdown.name = 0;
         }
       }
-      // Future: issue date, seal position, anomaly detection
     }
-  // Compute final status with new config (critical fields must match if requireAllCritical=true)
-    const { status: statusCfg2, criticalFields: critical2 } = SCORING;
-    const nonNameMismatches = fieldsMismatched.filter(f => f !== 'name');
-    let status;
-    if (!cert) status = 'failed';
-    else if (score >= statusCfg2.verifiedMinScore && (!statusCfg2.requireAllCritical || !critical2.some(f => fieldsMismatched.includes(f)))) status = 'verified';
-    else status = 'partial';
 
-    // Rule-based validation layer (independent of score) - influences anomalyReasons & potential FAKE
+    // ── Step 5: Determine final status ──────────────────────────────────────
+    const { status: statusCfg, criticalFields } = SCORING;
+    let status;
+
+    if (!cert) {
+      status = 'FAILED';
+    } else if (
+      score >= statusCfg.verifiedMinScore &&
+      (!statusCfg.requireAllCritical ||
+        !criticalFields.some((f) => fieldsMismatched.includes(f)))
+    ) {
+      status = 'VERIFIED';
+    } else {
+      status = 'SUSPICIOUS';
+    }
+
+    // ── Step 6: Rule-based sanity checks ────────────────────────────────────
     let ruleResult = null;
     if (cert) {
-      ruleResult = await validateRules({ cert, student, university: cert.universityId });
+      ruleResult = await validateRules({
+        cert,
+        student,
+        university: cert.universityId,
+      });
       if (!ruleResult.ok) {
         reasons.push(...ruleResult.reasons);
+        // Rule failures escalate status to FAKE
+        if (status !== 'FAILED') status = 'FAKE';
       }
     }
 
-    // ML anomaly scoring (only if cert exists)
-    let anomalyScore = 0; let anomalyReasons = [];
-    if (cert) {
-      const fv = buildFeatureVector({ cert, student });
-      try {
-        const { anomalyScore: aScore, error, missingModel } = await scoreAnomaly(fv);
-        anomalyScore = aScore || 0;
-        if (missingModel) anomalyReasons.push('Anomaly model missing (default score)');
-        if (error) anomalyReasons.push('Anomaly scoring error');
-      } catch(e){
-        anomalyReasons.push('Anomaly scoring exception');
-      }
-    }
-
-    // Determine final AI status tier
-    // Priority: if rule validation fails -> FAKE; else if anomalyScore > 0.7 -> SUSPICIOUS; else map legacy status
-    let finalStatus = status;
-    if (cert) {
-      if (ruleResult && !ruleResult.ok) finalStatus = 'FAKE';
-      else if (anomalyScore > 0.7) finalStatus = 'SUSPICIOUS';
-      else if (finalStatus === 'verified') finalStatus = 'VERIFIED';
-      else if (finalStatus === 'partial') finalStatus = 'SUSPICIOUS'; // partial now downgraded to SUSPICIOUS in new model
-    }
-
-    const logDoc = { certNo, status: finalStatus.toLowerCase(), score, reasons, fieldsMatched, fieldsMismatched, scoreBreakdown, ocrName: ocr ? ocr.candidateName : undefined, universityId: cert ? cert.universityId : undefined, anomalyScore, anomalyReasons: [...new Set([...anomalyReasons, ...(ruleResult && !ruleResult.ok ? ruleResult.reasons : [])])] };
+    // ── Step 7: Log and respond ──────────────────────────────────────────────
+    const logDoc = {
+      certNo,
+      status: status.toLowerCase(),
+      score,
+      reasons,
+      fieldsMatched,
+      fieldsMismatched,
+      scoreBreakdown,
+      ocrName:     ocr ? ocr.candidateName : undefined,
+      universityId: cert ? cert.universityId : undefined,
+    };
     await VerificationLog.create(logDoc);
-    res.json({ status: finalStatus, anomalyScore, anomalyReasons: logDoc.anomalyReasons, score, reasons, fieldsMatched, fieldsMismatched, scoreBreakdown, ocr, certificate: cert ? {
-      certNo: cert.certNo,
-      issueDate: cert.issueDate,
-      marks: cert.marksPercent,
-      universityId: cert.universityId,
-      student: cert.studentId ? {
-        name: cert.studentId.name,
-        rollNo: cert.studentId.rollNo,
-        course: cert.studentId.course,
-        graduationYear: cert.studentId.graduationYear
-      } : null
-    } : null });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
+
+    return res.json({
+      status,
+      score,
+      reasons,
+      fieldsMatched,
+      fieldsMismatched,
+      scoreBreakdown,
+      ocr,
+      certificate: cert
+        ? {
+            certNo:      cert.certNo,
+            issueDate:   cert.issueDate,
+            marks:       cert.marksPercent,
+            universityId: cert.universityId,
+            student: student
+              ? {
+                  name:           student.name,
+                  rollNo:         student.rollNo,
+                  course:         student.course,
+                  graduationYear: student.graduationYear,
+                }
+              : null,
+          }
+        : null,
+    });
+  } catch (err) {
+    console.error('[verifyCertificate] error:', err);
+    return res.status(500).json({ error: err.message });
   }
 }
