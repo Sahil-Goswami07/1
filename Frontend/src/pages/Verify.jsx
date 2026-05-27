@@ -163,7 +163,7 @@ export default function Verify() {
                       <p className="text-[10px] text-slate-400">Images or PDF up to ~5MB</p>
                     </>
                   )}
-                  <input ref={fileInputRef} type="file" accept="image/*,.pdf" className="hidden" onChange={handleFileSelect} />
+                  <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,image/jpeg,image/png,application/pdf" className="hidden" onChange={handleFileSelect} />
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

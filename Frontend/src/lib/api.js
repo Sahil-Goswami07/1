@@ -21,7 +21,7 @@ export async function apiLogin(email, password) {
 export async function postVerify(file, token) {
   if (!file) throw new Error('No file provided');
   const formData = new FormData();
-  formData.append('certificate', file);
+  formData.append('file', file);
   const headers = {};
   if (token) headers['Authorization'] = 'Bearer ' + token;
   const res = await fetch(`${BASE}/api/verify`, { method: 'POST', body: formData, headers });
@@ -61,7 +61,8 @@ export async function apiGet(path, token) {
 
 export async function apiVerify({ file, certNo, rollNo, marks, graduationYear }, token) {
   const form = new FormData();
-  if (file) form.append('certificate', file);
+  // Key must match FastAPI's UploadFile parameter: File(...) field name = 'file'
+  if (file) form.append('file', file);
   if (certNo) form.append('certNo', certNo);
   if (rollNo) form.append('rollNo', rollNo);
   if (marks) form.append('marks', marks);

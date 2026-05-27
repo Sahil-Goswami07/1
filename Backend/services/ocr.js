@@ -2,6 +2,8 @@ import Tesseract from 'tesseract.js';
 import { fromPath } from 'pdf2pic';
 import sharp from 'sharp';
 import fs from 'fs/promises';
+import os from 'os';
+import path from 'path';
 
 /**
  * Convert first page of PDF to PNG buffer
@@ -9,17 +11,31 @@ import fs from 'fs/promises';
 async function pdfToImageBuffer(pdfPath) {
   if (!pdfPath) throw new Error('PDF path is undefined');
 
+  // pdf2pic requires a real savePath directory — use os.tmpdir()
+  const savePath = os.tmpdir();
   const options = {
     density: 300,
     format: 'png',
     width: 1200,
     height: 1600,
-    savePath: undefined, // don't save, return buffer
+    savePath,
   };
 
   const storeAsImage = fromPath(pdfPath, options);
   const page1 = await storeAsImage(1);
-  return Buffer.from(page1.base64, 'base64');
+
+  // page1.base64 is populated when no savePath was given in older versions;
+  // newer versions write to disk and return page1.path instead.
+  if (page1.base64) {
+    return Buffer.from(page1.base64, 'base64');
+  }
+  if (page1.path) {
+    const buf = await fs.readFile(page1.path);
+    // clean up temp file (best-effort)
+    fs.unlink(page1.path).catch(() => {});
+    return buf;
+  }
+  throw new Error('pdf2pic did not return base64 or path for page 1');
 }
 
 /**
@@ -31,34 +47,63 @@ export async function runOCR(file) {
     console.log('[OCR DEBUG] runOCR invoked', { name: file.name, mimetype: file.mimetype, size: file.size });
   }
 
+  // ── STAGE 1: File received ────────────────────────────────────────────────
+  console.log('[VERIFY-DEBUG] STAGE 1 — file received:', {
+    name:     file.name,
+    mimetype: file.mimetype,
+    size:     file.size,
+  });
+
   const filePath = file.tempFilePath || file.path;
+  console.log('[VERIFY-DEBUG] STAGE 1 — resolved filePath:', filePath);
   if (!filePath) throw new Error('File path is missing');
 
+  // ── STAGE 2: File type detection ─────────────────────────────────────────
   let imageBuffer;
 
   if (file.mimetype === 'application/pdf') {
+    console.log('[VERIFY-DEBUG] STAGE 2 — detected PDF, converting to image buffer via pdf2pic');
     imageBuffer = await pdfToImageBuffer(filePath);
+    console.log('[VERIFY-DEBUG] STAGE 2 — PDF→image buffer size:', imageBuffer.length, 'bytes');
   } else {
+    console.log('[VERIFY-DEBUG] STAGE 2 — detected IMAGE, reading raw file buffer');
     imageBuffer = await fs.readFile(filePath);
+    console.log('[VERIFY-DEBUG] STAGE 2 — image buffer size:', imageBuffer.length, 'bytes');
   }
 
-  // Enhanced preprocessing: grayscale -> normalize -> sharpen -> resize
-  imageBuffer = await sharp(imageBuffer)
-    .grayscale()
-    .normalize() // contrast stretch
-    .sharpen(1, 0.5, 1)
-    .resize({ width: 1400 })
-    .toBuffer();
+  // ── STAGE 3: Preprocessing ───────────────────────────────────────────────
+  console.log('[VERIFY-DEBUG] STAGE 3 — starting sharp preprocessing...');
+  try {
+    const preprocessed = await sharp(imageBuffer)
+      .grayscale()
+      .normalize()         // contrast stretch
+      .sharpen(1, 0.5, 1)
+      .resize({ width: 1400 })
+      .toBuffer();
+    // Only use preprocessed result if it is non-trivially sized
+    if (preprocessed && preprocessed.length > 1024) {
+      imageBuffer = preprocessed;
+      console.log('[VERIFY-DEBUG] STAGE 3 — preprocessing OK, buffer size:', imageBuffer.length, 'bytes');
+    } else {
+      console.log('[VERIFY-DEBUG] STAGE 3 — preprocessed buffer too small, keeping original');
+    }
+  } catch (sharpErr) {
+    console.log('[VERIFY-DEBUG] STAGE 3 — preprocessing FAILED:', sharpErr.message, '— using original buffer');
+    // imageBuffer stays as-is (original)
+  }
 
-  // Run OCR
+  // ── STAGE 4: OCR execution ───────────────────────────────────────────────
+  console.log('[VERIFY-DEBUG] STAGE 4 — starting Tesseract OCR...');
   let text;
   try {
     const { data } = await Tesseract.recognize(imageBuffer, 'eng', {
       logger: m => { if (process.env.DEBUG_OCR) console.log(m); }
     });
     text = data.text || '';
+    console.log('[VERIFY-DEBUG] STAGE 4 — OCR complete. Text length:', text.length, 'chars');
+    console.log('[VERIFY-DEBUG] STAGE 4 — First 500 chars of OCR output:\n' + text.slice(0, 500).replace(/\n/g, '\\n'));
   } catch (e) {
-    if (process.env.DEBUG_OCR) console.log('[OCR DEBUG] Tesseract error', e.message);
+    console.log('[VERIFY-DEBUG] STAGE 4 — Tesseract FAILED:', e.message);
     throw e;
   }
 
@@ -181,15 +226,22 @@ export async function runOCR(file) {
   const confusionMap = (raw) => {
     if (!raw) return raw;
     let r = raw.toUpperCase();
-    // Replace interior Os that are surrounded by digits with 0
+    // ── digit-surrounded character fixes ──────────────────────────────────
+    // O/Q → 0 between digits
     r = r.replace(/(?<=\d)[OQ](?=\d)/g,'0');
-    // Replace I or l between digits with 1
+    // I/l → 1 between digits
     r = r.replace(/(?<=\d)[IL](?=\d)/g,'1');
-    // Replace S between digits with 5
+    // S → 5 between digits
     r = r.replace(/(?<=\d)S(?=\d)/g,'5');
-    // Common slip: B mistaken for 8 between digits
+    // B → 8 between digits
     r = r.replace(/(?<=\d)B(?=\d)/g,'8');
-    // Remove stray punctuation
+    // ── RTU-specific photo OCR fixes ───────────────────────────────────────
+    // RTU IDs always start with 2-digit year then E (e.g. 23E...).
+    // Camera photos commonly misread E → F at that position.
+    r = r.replace(/^(2\d)F([JC1I])/, '$1E$2');  // 23FJCCS → 23EJCCS
+    // J misread as I at start of branch code (after year+E)
+    r = r.replace(/^(2\dE)I([A-Z])/, '$1J$2');  // 23EICCS → 23EJCCS
+    // Remove stray punctuation (keep alphanumerics only)
     r = r.replace(/[^A-Z0-9]/g,'');
     return r;
   };
@@ -206,17 +258,23 @@ export async function runOCR(file) {
     for (let raw of lines) {
       const line = raw.trim();
       if (!line) continue;
-      // Tolerant roll pattern capturing after colon or within line
+
+      // ── Roll No — tolerant pattern (also handles "Roll No." with dot) ──────
       const rollAlt = line.match(/Roll\s*No\.?\s*[:\-]?\s*([A-Z0-9]{5,})/i);
       if (rollAlt) {
         const cand = confusionMap(rollAlt[1].toUpperCase());
         if (/^[A-Z0-9]{5,}$/.test(cand)) rollNumber = pickBest(rollNumber, cand);
       }
-      const enrAlt = line.match(/Enrol+ment\s*No\.?\s*[:\-]?\s*([A-Z0-9]{5,})/i); // handles Enrollment / Enrolment
+
+      // ── Enrollment — handle SAME LINE layout: "Roll No ... Enrollment No ..." ─
+      // In the photographed RTU format, both IDs are on the same line.
+      // The regex below searches anywhere on the line, not just at start.
+      const enrAlt = line.match(/Enrol+ment\s*No\.?\s*[:\-]?\s*([A-Z0-9]{6,})/i);
       if (enrAlt) {
         const cand = confusionMap(enrAlt[1].toUpperCase());
-        if (/^[A-Z0-9]{5,}$/.test(cand)) enrollmentNumber = pickBest(enrollmentNumber, cand);
+        if (/^[A-Z0-9]{6,}$/.test(cand)) enrollmentNumber = pickBest(enrollmentNumber, cand);
       }
+
       const serialAlt = line.match(/S\.?\s*No\.?\s*[:\-]?\s*([A-Z0-9 ]{3,})/i);
       if (serialAlt) serialNumber = pickBest(serialNumber, serialAlt[1].trim().replace(/\s+/g,' '));
     }
@@ -228,13 +286,15 @@ export async function runOCR(file) {
     try {
       const meta = await sharp(imageBuffer).metadata();
       if (meta && meta.width && meta.height) {
-        const headerHeight = Math.min(meta.height, Math.round(meta.height * 0.35));
+        // Crop the TOP 22% — that's where Roll No / Enrollment No live in RTU layout.
+        // Using 22% instead of 35% avoids the watermark stamp which sits in the middle.
+        const headerHeight = Math.min(meta.height, Math.round(meta.height * 0.22));
         let headerBuffer = await sharp(imageBuffer)
           .extract({ left: 0, top: 0, width: meta.width, height: headerHeight })
           .grayscale()
-          .linear(1.25, -10) // boost contrast
-          .normalise?.() // in some sharp versions normalise alias
-          .threshold(160) // binarize
+          .linear(1.5, -20)   // stronger contrast boost for photo tint
+          .normalise()         // stretch histogram fully
+          .threshold(140)      // slightly lower threshold → preserve thin strokes
           .toBuffer();
 
         const headerResult = await Tesseract.recognize(headerBuffer, 'eng', {
@@ -242,11 +302,10 @@ export async function runOCR(file) {
           logger: m => { if (process.env.DEBUG_OCR) console.log('[OCR HEADER]', m); }
         });
         const headerText = headerResult.data.text || '';
-        if (process.env.DEBUG_OCR) {
-          console.log('[OCR DEBUG] Header pass text:\n', headerText);
-        }
+        // Always log header pass text so failures are visible without DEBUG_OCR
+        console.log('[VERIFY-DEBUG] HEADER PASS text:', headerText.replace(/\n/g,'\\n').slice(0, 400));
+
         const headerLines = headerText.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
-        // Normalization for label distortions (R0LL -> ROLL, ENR0LL -> ENROLL, S  . NO -> S. NO)
         function normLabelLine(l){
           return l
             .toUpperCase()
@@ -265,11 +324,13 @@ export async function runOCR(file) {
           const line = normLabelLine(raw);
           headerDebug.push(line);
           if (rollNumber === 'Unknown') {
-            const m = line.match(/ROLL\s*NO\.?\s*[:\-]?\s*([A-Z0-9]{5,})/);
+            // Tolerate dot after No (Roll No. vs Roll No)
+            const m = line.match(/ROLL\s*NO\.?\s*[:\-]?\s*([A-Z0-9]{4,})/);
             if (m) rollNumber = pickBest(rollNumber, confusionMap(m[1]));
           }
           if (enrollmentNumber === 'Unknown') {
-            const m = line.match(/ENROLL?MENT?\s*NO\.?\s*[:\-]?\s*([A-Z0-9]{6,})/);
+            // Match both "Enrollment No" and "Enrolment No" with optional dot
+            const m = line.match(/ENROLL?MENT?\.?\s*NO\.?\s*[:\-]?\s*([A-Z0-9]{6,})/);
             if (m) enrollmentNumber = pickBest(enrollmentNumber, confusionMap(m[1]));
           }
           if (serialNumber === 'Unknown') {
@@ -278,13 +339,10 @@ export async function runOCR(file) {
           }
           if (rollNumber !== 'Unknown' && enrollmentNumber !== 'Unknown' && serialNumber !== 'Unknown') break;
         }
-        if (process.env.DEBUG_OCR) {
-          console.log('[OCR DEBUG] Header normalized lines:', headerDebug);
-          console.log('[OCR DEBUG] Extracted IDs after header pass', { rollNumber, enrollmentNumber, serialNumber });
-        }
+        console.log('[VERIFY-DEBUG] HEADER PASS extracted:', { rollNumber, enrollmentNumber, serialNumber });
       }
     } catch(e) {
-      if (process.env.DEBUG_OCR) console.log('[OCR DEBUG] Header pass error', e.message);
+      console.log('[VERIFY-DEBUG] Header pass error:', e.message);
     }
   }
 
@@ -346,6 +404,19 @@ export async function runOCR(file) {
   }
   const correctedEnrollmentNumber = correctEnrollment(enrollmentNumber);
   const correctedRollNumber = correctRoll(rollNumber);
+
+  // ── STAGE 5: Extracted fields ───────────────────────────────────────────────
+  const extractedFields = {
+    candidateName,
+    fatherName,
+    serialNumber,
+    rollNumber,
+    correctedRollNumber,
+    enrollmentNumber,
+    correctedEnrollmentNumber,
+    collegeName,
+  };
+  console.log('[VERIFY-DEBUG] STAGE 5 — extracted fields:', JSON.stringify(extractedFields, null, 2));
 
   return {
     candidateName,

@@ -1,0 +1,23 @@
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+python-multipart==0.0.9
+
+# OCR
+pytesseract==0.3.13
+Pillow==10.3.0
+opencv-python-headless==4.9.0.80
+pdf2image==1.17.0
+numpy==1.26.4
+
+# Fuzzy name matching (no Rust build required on Windows)
+rapidfuzz==3.9.3
+
+# Database
+sqlalchemy==2.0.30
+psycopg2-binary==2.9.9
+alembic==1.13.1
+
+# Utilities
+pydantic==2.7.1
+pydantic-settings==2.2.1
+python-dotenv==1.0.1

@@ -15,6 +15,7 @@
 import Certificate        from '../models/Certificate.js';
 import VerificationLog    from '../models/VerificationLog.js';
 import { runOCR }         from '../services/ocr.js';
+import { extractWithGemini } from '../services/geminiOcr.js';
 import fileUpload         from 'express-fileupload';
 import { SCORING, POLICY } from '../config/scoring.js';
 import { nameSimilarity } from '../utils/textNormalize.js';
@@ -41,14 +42,68 @@ const normalizeId = (v) =>
 
 export async function verifyCertificate(req, res) {
   try {
+    // ── STAGE 0: Request inspection ──────────────────────────────────────────
+    console.log('[VERIFY-DEBUG] STAGE 0 — req.body keys:', Object.keys(req.body || {}));
+    console.log('[VERIFY-DEBUG] STAGE 0 — req.body values:', {
+      certNo:          req.body?.certNo,
+      rollNo:          req.body?.rollNo,
+      marks:           req.body?.marks,
+      graduationYear:  req.body?.graduationYear,
+    });
+    console.log('[VERIFY-DEBUG] STAGE 0 — req.files keys:', req.files ? Object.keys(req.files) : 'NO FILES');
+    // The controller looks for req.files.certificate — log whether that key exists
+    console.log('[VERIFY-DEBUG] STAGE 0 — req.files.certificate present?', !!(req.files && req.files.certificate));
+    console.log('[VERIFY-DEBUG] STAGE 0 — req.files.file present?', !!(req.files && req.files.file));
+
     let { certNo, rollNo, marks, graduationYear } = req.body;
 
     // ── Step 1: OCR ─────────────────────────────────────────────────────────
+    // Accept both 'file' (new frontend key) and 'certificate' (legacy key)
     let ocr = null;
-    if (req.files && req.files.certificate) {
-      ocr = await runOCR(req.files.certificate);
+    const uploadedFile = req.files && (req.files.file || req.files.certificate);
+    if (uploadedFile) {
+      console.log('[VERIFY-DEBUG] STAGE 1 — using file key:', req.files.file ? "'file'" : "'certificate'");
 
-      // Infer identifiers from OCR if not supplied by the caller
+      // ── 1a: Tesseract OCR (handles digital PDFs + clean images well) ────────
+      ocr = await runOCR(uploadedFile);
+
+      // ── 1b: Gemini Vision (primary for photographed / watermarked images) ───
+      // Only invoke Gemini if Tesseract failed to get at least one critical ID.
+      const isRollValid = ocr.rollNumber && ocr.rollNumber !== 'Unknown' && ocr.rollNumber.length >= 9 && ocr.rollNumber.length <= 11;
+      const isEnrollValid = ocr.enrollmentNumber && ocr.enrollmentNumber !== 'Unknown' && ocr.enrollmentNumber.length >= 14 && ocr.enrollmentNumber.length <= 16;
+      const tesseractMissingCritical = !isRollValid || !isEnrollValid;
+
+      if (tesseractMissingCritical) {
+        console.log('[VERIFY-DEBUG] Tesseract missing critical fields — invoking Gemini Vision...');
+        const filePath = uploadedFile.tempFilePath || uploadedFile.path;
+        const gemini   = await extractWithGemini(filePath, uploadedFile.mimetype);
+
+        if (gemini) {
+          // When Gemini is invoked it means Tesseract struggled with this image.
+          // Trust Gemini's answers for ALL fields it provides — not just Unknown ones.
+          // Tesseract's corrupted value (e.g. '23E1JCCSMASP') must be overridden.
+          if (gemini.rollNumber) {
+            console.log('[VERIFY-DEBUG] Gemini rollNumber:', gemini.rollNumber, '(was:', ocr.rollNumber, ')');
+            ocr.rollNumber = ocr.correctedRollNumber = gemini.rollNumber;
+          }
+          if (gemini.enrollmentNumber) {
+            console.log('[VERIFY-DEBUG] Gemini enrollmentNumber:', gemini.enrollmentNumber, '(was:', ocr.enrollmentNumber, ')');
+            ocr.enrollmentNumber = ocr.correctedEnrollmentNumber = gemini.enrollmentNumber;
+          }
+          if (gemini.candidateName)    ocr.candidateName = gemini.candidateName;
+          if (gemini.fatherName)       ocr.fatherName    = gemini.fatherName;
+          if (!ocr.marks && gemini.sgpa) {
+            ocr.marks = parseFloat(gemini.sgpa) * 10;
+          }
+          ocr._geminiUsed = true;
+          console.log('[VERIFY-DEBUG] Gemini merge complete. rollNumber:', ocr.rollNumber, 'enrollmentNumber:', ocr.enrollmentNumber);
+        } else {
+          console.log('[VERIFY-DEBUG] Gemini returned null — staying with Tesseract results');
+        }
+      }
+
+
+      // Infer identifiers from OCR result (Tesseract + Gemini merged)
       if (!rollNo) {
         rollNo = ocr.correctedRollNumber !== 'Unknown'
           ? ocr.correctedRollNumber
