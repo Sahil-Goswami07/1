@@ -8,9 +8,10 @@ Output: {"anomalyScore": float}
 Anomaly score normalized to 0-1 where higher = more anomalous.
 """
 
-model_path = os.path.join('Backend','ml','model.pkl')
+script_dir = os.path.dirname(os.path.abspath(__file__))
+model_path = os.path.join(script_dir, 'model.pkl')
 if not os.path.exists(model_path):
-    print(json.dumps({'error':'model not found'}))
+    print(json.dumps({'error': f'model not found at {model_path}'}))
     sys.exit(1)
 
 bundle = joblib.load(model_path)

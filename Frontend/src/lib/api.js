@@ -3,7 +3,10 @@ const BASE = (import.meta && import.meta.env && import.meta.env.VITE_API_BASE) |
 async function handleResponse(res) {
   if (!res.ok) {
     let msg = res.status + ' ' + res.statusText;
-    try { const j = await res.json(); msg = j.error || msg; } catch {}
+    try { 
+      const j = await res.json(); 
+      msg = j.stack || j.error || msg; 
+    } catch {}
     throw new Error(msg);
   }
   return res.json();

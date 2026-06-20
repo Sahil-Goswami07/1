@@ -70,6 +70,8 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const templatesDir = path.join(__dirname, 'templates');
+app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
+app.use('/uploads', express.static(path.join(__dirname, 'Backend', 'public', 'uploads')));
 app.get('/api/templates/import/csv', (req, res) => {
 	const p = path.join(templatesDir, 'bulk_import_template.csv');
 	if (!fs.existsSync(p)) {

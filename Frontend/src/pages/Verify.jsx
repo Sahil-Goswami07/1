@@ -203,6 +203,19 @@ export default function Verify() {
                           </span>
                         </p>
                       )}
+                      {result.imageAuthenticity && (
+                        <div className="text-[11px] mt-2 space-y-1 bg-slate-50 p-2 rounded border border-slate-100">
+                          <p className="font-semibold text-slate-700">Image Authenticity Summary</p>
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-slate-600">
+                            <div>Logo Match: <span className="font-medium">{(result.imageAuthenticity.logoSimilarity * 100).toFixed(0)}%</span></div>
+                            <div>Seal Match: <span className="font-medium">{(result.imageAuthenticity.sealSimilarity * 100).toFixed(0)}%</span></div>
+                            <div>Layout Match: <span className="font-medium">{(result.imageAuthenticity.layoutSimilarity * 100).toFixed(0)}%</span></div>
+                            <div>Metadata Risk: <span className={result.imageAuthenticity.metadataRisk > 0.5 ? 'text-red-600 font-semibold' : 'text-slate-700'}>{(result.imageAuthenticity.metadataRisk * 100).toFixed(0)}%</span></div>
+                            <div>Forgery Level: <span className={result.imageAuthenticity.tamperingScore > 0.4 ? 'text-red-600 font-semibold' : 'text-slate-700'}>{(result.imageAuthenticity.tamperingScore * 100).toFixed(0)}%</span></div>
+                            <div>QR Decoded: <span className="font-medium">{result.imageAuthenticity.qrScore > 0.8 ? 'Yes (Verified)' : result.imageAuthenticity.qrScore > 0.0 ? 'Yes (Mismatched)' : 'No QR'}</span></div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div className="flex flex-col items-end gap-1">
                       <div className="flex items-center gap-2">
@@ -241,6 +254,134 @@ export default function Verify() {
                       <ul className="text-[11px] list-disc list-inside text-slate-600 space-y-0.5">
                         {result.reasons.map(r => <li key={r}>{r}</li>)}
                       </ul>
+                    </div>
+                  )}
+
+                  {result.imageAuthenticity && (
+                    <div className="mt-6 border border-slate-200 rounded-lg p-5 bg-white shadow-sm space-y-6">
+                      <h3 className="text-sm font-semibold text-slate-900 border-b border-slate-100 pb-2">Image Forensics & Authenticity Report</h3>
+                      
+                      {/* Logo and Seal Comparisons */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* Logo Box */}
+                        <div className="border border-slate-150 rounded-md p-3 bg-slate-50/50">
+                          <h4 className="text-xs font-semibold text-slate-700 mb-3 flex justify-between">
+                            <span>Logo Verification</span>
+                            <span className={result.imageAuthenticity.logoSimilarity >= 0.75 ? 'text-green-600' : 'text-red-600'}>
+                              {Math.round(result.imageAuthenticity.logoSimilarity * 100)}% Match
+                            </span>
+                          </h4>
+                          <div className="flex gap-4 items-center justify-center">
+                            <div className="flex flex-col items-center">
+                              <span className="text-[9px] text-slate-400 mb-1">Official template</span>
+                              <div className="w-20 h-20 bg-white border border-slate-200 rounded flex items-center justify-center overflow-hidden">
+                                {result.certificate?.logoImage ? (
+                                  <img 
+                                    src={`http://localhost:5000${result.certificate.logoImage}`}
+                                    alt="Official Logo" 
+                                    className="object-contain max-w-full max-h-full" 
+                                  />
+                                ) : (
+                                  <span className="text-[10px] text-slate-400">Not Seeded</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-center">
+                              <span className="text-[9px] text-slate-400 mb-1">Extracted region</span>
+                              <div className="w-20 h-20 bg-white border border-slate-200 rounded flex items-center justify-center overflow-hidden">
+                                {result.imageAuthenticity.extractedLogoPath ? (
+                                  <img 
+                                    src={`http://localhost:5000${result.imageAuthenticity.extractedLogoPath}`} 
+                                    alt="Extracted Logo" 
+                                    className="object-contain max-w-full max-h-full" 
+                                  />
+                                ) : (
+                                  <span className="text-[10px] text-slate-400">Not Cropped</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Seal Box */}
+                        <div className="border border-slate-150 rounded-md p-3 bg-slate-50/50">
+                          <h4 className="text-xs font-semibold text-slate-700 mb-3 flex justify-between">
+                            <span>Seal Verification</span>
+                            <span className={result.imageAuthenticity.sealSimilarity >= 0.75 ? 'text-green-600' : 'text-red-600'}>
+                              {Math.round(result.imageAuthenticity.sealSimilarity * 100)}% Match
+                            </span>
+                          </h4>
+                          <div className="flex gap-4 items-center justify-center">
+                            <div className="flex flex-col items-center">
+                              <span className="text-[9px] text-slate-400 mb-1">Official template</span>
+                              <div className="w-20 h-20 bg-white border border-slate-200 rounded flex items-center justify-center overflow-hidden">
+                                {result.certificate?.sealImage ? (
+                                  <img 
+                                    src={`http://localhost:5000${result.certificate.sealImage}`}
+                                    alt="Official Seal" 
+                                    className="object-contain max-w-full max-h-full" 
+                                  />
+                                ) : (
+                                  <span className="text-[10px] text-slate-400">Not Seeded</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-center">
+                              <span className="text-[9px] text-slate-400 mb-1">Extracted region</span>
+                              <div className="w-20 h-20 bg-white border border-slate-200 rounded flex items-center justify-center overflow-hidden">
+                                {result.imageAuthenticity.extractedSealPath ? (
+                                  <img 
+                                    src={`http://localhost:5000${result.imageAuthenticity.extractedSealPath}`} 
+                                    alt="Extracted Seal" 
+                                    className="object-contain max-w-full max-h-full" 
+                                  />
+                                ) : (
+                                  <span className="text-[10px] text-slate-400">Not Cropped</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Diagnostic metrics */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-xs">
+                        <div className="p-3 border border-slate-100 rounded-md bg-slate-50/20">
+                          <p className="font-semibold text-slate-700 mb-1">Layout Similarity</p>
+                          <p className="text-lg font-bold text-slate-800">
+                            {Math.round(result.imageAuthenticity.layoutSimilarity * 100)}%
+                          </p>
+                          <p className="text-[10px] text-slate-400 mt-1">Evaluated certificate grid structure alignment against official templates.</p>
+                        </div>
+                        <div className="p-3 border border-slate-100 rounded-md bg-slate-50/20">
+                          <p className="font-semibold text-slate-700 mb-1">Digital Tampering Score</p>
+                          <p className={`text-lg font-bold ${result.imageAuthenticity.tamperingScore > 0.4 ? 'text-red-600' : 'text-slate-800'}`}>
+                            {Math.round(result.imageAuthenticity.tamperingScore * 100)}%
+                          </p>
+                          <p className="text-[10px] text-slate-400 mt-1">Calculated JPEG Error Level Analysis (ELA) and noise variance inconsistencies.</p>
+                        </div>
+                        <div className="p-3 border border-slate-100 rounded-md bg-slate-50/20">
+                          <p className="font-semibold text-slate-700 mb-1">Metadata Risk Analysis</p>
+                          <p className={`text-lg font-bold ${result.imageAuthenticity.metadataRisk > 0.6 ? 'text-red-600' : 'text-slate-800'}`}>
+                            {Math.round(result.imageAuthenticity.metadataRisk * 100)}%
+                          </p>
+                          <p className="text-[10px] text-slate-400 mt-1">Analyzed software headers, EXIF tags, color profiles, and timestamps.</p>
+                        </div>
+                      </div>
+
+                      {/* Exif details */}
+                      {result.imageAuthenticity.metadata && (
+                        <div className="border border-slate-200 rounded-md p-3 bg-slate-50/30 text-xs">
+                          <h4 className="font-semibold text-slate-700 mb-2">Extracted Exif Metadata</h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-[11px]">
+                            <div><strong>Creation Tool:</strong> {result.imageAuthenticity.metadata.software || 'None detected'}</div>
+                            <div><strong>DPI Profile:</strong> {result.imageAuthenticity.metadata.dpi || 'Unknown'}</div>
+                            <div><strong>ICC Color Profile:</strong> {result.imageAuthenticity.metadata.has_icc_profile ? 'Yes' : 'No'}</div>
+                            <div className="sm:col-span-2"><strong>Capture Device Model:</strong> {result.imageAuthenticity.metadata.make_model || 'Unknown (Pure digital render)'}</div>
+                            <div><strong>DateTime Stamp:</strong> {result.imageAuthenticity.metadata.timestamp || 'Unknown'}</div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                   {result.scoreBreakdown && (
@@ -299,14 +440,22 @@ export default function Verify() {
                 {result.ocr && (
                   <div className="bg-white border border-slate-200 rounded-lg p-5">
                     <h3 className="text-sm font-semibold text-slate-900 mb-2">OCR Extract</h3>
-                    <div className="text-xs text-slate-600 space-y-1">
-                      <p><strong>OCR Name:</strong> {result.ocr.candidateName}</p>
-                      <p><strong>OCR Roll:</strong> {result.ocr.rollNumber}</p>
-                      <p><strong>OCR Enrollment:</strong> {result.ocr.enrollmentNumber}</p>
-                      <details className="mt-2">
-                        <summary className="cursor-pointer text-blue-600">Full Text</summary>
-                        <pre className="mt-2 whitespace-pre-wrap max-h-64 overflow-auto bg-slate-50 p-2 rounded border border-slate-200">{result.ocr.fullText?.slice(0, 500) || ''}{result.ocr.fullText && result.ocr.fullText.length > 500 ? '...' : ''}</pre>
-                      </details>
+                    {result.ocr.candidateName !== 'Unknown' || result.ocr.rollNumber !== 'Unknown' ? (
+                      <div className="text-xs text-slate-600 space-y-1 mb-4 border-b border-slate-100 pb-3">
+                        <p><strong>OCR Name:</strong> {result.ocr.candidateName}</p>
+                        <p><strong>OCR Roll:</strong> {result.ocr.rollNumber}</p>
+                        <p><strong>OCR Enrollment:</strong> {result.ocr.enrollmentNumber}</p>
+                      </div>
+                    ) : (
+                      <div className="mb-4 text-xs font-medium text-amber-700 bg-amber-50 p-2 rounded">
+                        No standard certificate fields (Name/Roll No) detected. Showing general OCR extraction below:
+                      </div>
+                    )}
+                    <div className="text-xs text-slate-600">
+                      <strong className="block mb-2 text-blue-600">Extracted Full Text:</strong>
+                      <pre className="whitespace-pre-wrap max-h-96 overflow-auto bg-slate-50 p-3 rounded border border-slate-200 text-[11px] leading-relaxed">
+                        {result.ocr.fullText || 'No text could be extracted.'}
+                      </pre>
                     </div>
                   </div>
                 )}

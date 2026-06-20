@@ -31,7 +31,8 @@ DB_NAME = get_env('DB_NAME', None)
 client = MongoClient(MONGO_URI)
 if DB_NAME is None:
     # derive DB from URI last path
-    DB_NAME = client.get_default_database().name if client.get_default_database() else 'eduauth'
+    default_db = client.get_default_database()
+    DB_NAME = default_db.name if default_db is not None else 'eduauth'
 
 db = client[DB_NAME]
 certs_col = db['certificates']
@@ -68,7 +69,13 @@ for c in certs:
         'issueYear': issueYear,
         'certNoLength': len(certNo),
         'nameLength': nameLen,
-        'rollPatternScore': rollPatternScore
+        'rollPatternScore': rollPatternScore,
+        'logoSimilarity': 1.0,
+        'sealSimilarity': 1.0,
+        'metadataRisk': 0.0,
+        'tamperingScore': 0.0,
+        'layoutSimilarity': 1.0,
+        'qrScore': 1.0
     })
 
 df = pd.DataFrame(rows)
@@ -79,12 +86,12 @@ else:
     df['marksPercent'] = df['marksPercent'].fillna(df['marksPercent'].median())
 
 # IsolationForest expects numeric matrix
-X = df[['marksPercent','issueYear','certNoLength','nameLength','rollPatternScore']].values
+X = df[['marksPercent','issueYear','certNoLength','nameLength','rollPatternScore','logoSimilarity','sealSimilarity','metadataRisk','tamperingScore','layoutSimilarity','qrScore']].values
 
 model = IsolationForest(n_estimators=150, contamination=0.05, random_state=42)
 model.fit(X)
 
-os.makedirs(os.path.join('Backend','ml'), exist_ok=True)
-model_path = os.path.join('Backend','ml','model.pkl')
+script_dir = os.path.dirname(os.path.abspath(__file__))
+model_path = os.path.join(script_dir, 'model.pkl')
 joblib.dump({'model': model}, model_path)
 print(json.dumps({'ok': True, 'saved': model_path, 'samples': len(df)}))

@@ -34,6 +34,14 @@ export function AuthProvider({ children }) {
     setAuth({ token: null, role: null, email: null, universityId: null, universityName: null, universityCode: null });
   }, []);
 
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      logout();
+    };
+    window.addEventListener('auth-unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('auth-unauthorized', handleUnauthorized);
+  }, [logout]);
+
   const value = { ...auth, login, logout, loading, setLoading };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

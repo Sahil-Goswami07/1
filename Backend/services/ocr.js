@@ -4,6 +4,20 @@ import sharp from 'sharp';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const pdf = require('pdf-parse');
+
+// Force inject GraphicsMagick and Ghostscript into PATH on Windows to bypass IDE terminal restart requirements
+if (os.platform() === 'win32') {
+  if (!process.env.PATH.includes('GraphicsMagick')) {
+    process.env.PATH += ';C:\\Program Files\\GraphicsMagick-1.3.46-Q16';
+  }
+  if (!process.env.PATH.includes('gs10.07.0')) {
+    process.env.PATH += ';C:\\Program Files (x86)\\gs\\gs10.07.0\\bin';
+  }
+}
 
 /**
  * Convert first page of PDF to PNG buffer
@@ -18,24 +32,38 @@ async function pdfToImageBuffer(pdfPath) {
     format: 'png',
     width: 1200,
     height: 1600,
-    savePath,
+    saveFilename: `temp_pdf_${Date.now()}`,
+    savePath: './tmp'
   };
 
-  const storeAsImage = fromPath(pdfPath, options);
-  const page1 = await storeAsImage(1);
-
-  // page1.base64 is populated when no savePath was given in older versions;
-  // newer versions write to disk and return page1.path instead.
-  if (page1.base64) {
-    return Buffer.from(page1.base64, 'base64');
+  try {
+    // Ensure tmp exists
+    await fs.mkdir('./tmp', { recursive: true }).catch(() => {});
+    const storeAsImage = fromPath(pdfPath, options);
+    const page1 = await storeAsImage(1);
+    
+    if (page1.base64) {
+      return Buffer.from(page1.base64, 'base64');
+    }
+    if (!page1 || !page1.path) {
+      throw new Error('PDF conversion yield no image path.');
+    }
+    
+    // Read the converted image back into memory
+    const buff = await fs.readFile(page1.path);
+    // Cleanup converted image
+    await fs.unlink(page1.path).catch(() => {});
+    return buff;
+  } catch (err) {
+    if (err.message && err.message.includes('gm/convert binaries can\'t be found')) {
+      throw new Error('PDF processing requires GraphicsMagick to be installed on Windows. Please upload a normal Image (PNG/JPEG) instead of a PDF.');
+    }
+    if (err.message && err.message.includes('Postscript delegate failed')) {
+      throw new Error('Ghostscript crashed while reading the PDF. On Windows, this usually means you need to RESTART your entire computer so Ghostscript can register itself. For now, please upload a normal Image (PNG/JPEG)!');
+    }
+    console.error('pdfToImageBuffer error:', err);
+    throw err;
   }
-  if (page1.path) {
-    const buf = await fs.readFile(page1.path);
-    // clean up temp file (best-effort)
-    fs.unlink(page1.path).catch(() => {});
-    return buf;
-  }
-  throw new Error('pdf2pic did not return base64 or path for page 1');
 }
 
 /**
@@ -58,53 +86,78 @@ export async function runOCR(file) {
   console.log('[VERIFY-DEBUG] STAGE 1 — resolved filePath:', filePath);
   if (!filePath) throw new Error('File path is missing');
 
+  let text = '';
+  let skipOCR = false;
+
   // ── STAGE 2: File type detection ─────────────────────────────────────────
   let imageBuffer;
 
   if (file.mimetype === 'application/pdf') {
-    console.log('[VERIFY-DEBUG] STAGE 2 — detected PDF, converting to image buffer via pdf2pic');
-    imageBuffer = await pdfToImageBuffer(filePath);
-    console.log('[VERIFY-DEBUG] STAGE 2 — PDF→image buffer size:', imageBuffer.length, 'bytes');
+    console.log('[VERIFY-DEBUG] STAGE 2 — detected PDF, attempting local text extraction first');
+    try {
+      const dataBuffer = await fs.readFile(filePath);
+      const parser = new pdf.PDFParse({ data: dataBuffer });
+      const textResult = await parser.getText();
+      await parser.destroy();
+      text = textResult.text || '';
+      
+      if (text && text.trim().length >= 50) {
+        console.log(`[VERIFY-DEBUG] Successfully extracted PDF text locally. Length: ${text.length} chars. Skipping OCR.`);
+        skipOCR = true;
+      } else {
+        console.log('[VERIFY-DEBUG] PDF contains minimal or no selectable text. Falling back to image rendering + Tesseract...');
+      }
+    } catch (pdfErr) {
+      console.error('[VERIFY-DEBUG] Local PDF text extraction failed:', pdfErr.message);
+      console.log('[VERIFY-DEBUG] Falling back to image rendering + Tesseract...');
+    }
+
+    if (!skipOCR) {
+      console.log('[VERIFY-DEBUG] converting to image buffer via pdf2pic');
+      imageBuffer = await pdfToImageBuffer(filePath);
+      console.log('[VERIFY-DEBUG] PDF→image buffer size:', imageBuffer.length, 'bytes');
+    }
   } else {
     console.log('[VERIFY-DEBUG] STAGE 2 — detected IMAGE, reading raw file buffer');
     imageBuffer = await fs.readFile(filePath);
     console.log('[VERIFY-DEBUG] STAGE 2 — image buffer size:', imageBuffer.length, 'bytes');
   }
 
-  // ── STAGE 3: Preprocessing ───────────────────────────────────────────────
-  console.log('[VERIFY-DEBUG] STAGE 3 — starting sharp preprocessing...');
-  try {
-    const preprocessed = await sharp(imageBuffer)
-      .grayscale()
-      .normalize()         // contrast stretch
-      .sharpen(1, 0.5, 1)
-      .resize({ width: 1400 })
-      .toBuffer();
-    // Only use preprocessed result if it is non-trivially sized
-    if (preprocessed && preprocessed.length > 1024) {
-      imageBuffer = preprocessed;
-      console.log('[VERIFY-DEBUG] STAGE 3 — preprocessing OK, buffer size:', imageBuffer.length, 'bytes');
-    } else {
-      console.log('[VERIFY-DEBUG] STAGE 3 — preprocessed buffer too small, keeping original');
+  if (!skipOCR) {
+    // ── STAGE 3: Preprocessing ───────────────────────────────────────────────
+    console.log('[VERIFY-DEBUG] STAGE 3 — starting sharp preprocessing...');
+    try {
+      const preprocessed = await sharp(imageBuffer)
+        .grayscale()
+        .normalize()         // contrast stretch
+        .sharpen(1, 0.5, 1)
+        .resize({ width: 1400 })
+        .toBuffer();
+      // Only use preprocessed result if it is non-trivially sized
+      if (preprocessed && preprocessed.length > 1024) {
+        imageBuffer = preprocessed;
+        console.log('[VERIFY-DEBUG] STAGE 3 — preprocessing OK, buffer size:', imageBuffer.length, 'bytes');
+      } else {
+        console.log('[VERIFY-DEBUG] STAGE 3 — preprocessed buffer too small, keeping original');
+      }
+    } catch (sharpErr) {
+      console.log('[VERIFY-DEBUG] STAGE 3 — preprocessing FAILED:', sharpErr.message, '— using original buffer');
+      // imageBuffer stays as-is (original)
     }
-  } catch (sharpErr) {
-    console.log('[VERIFY-DEBUG] STAGE 3 — preprocessing FAILED:', sharpErr.message, '— using original buffer');
-    // imageBuffer stays as-is (original)
-  }
 
-  // ── STAGE 4: OCR execution ───────────────────────────────────────────────
-  console.log('[VERIFY-DEBUG] STAGE 4 — starting Tesseract OCR...');
-  let text;
-  try {
-    const { data } = await Tesseract.recognize(imageBuffer, 'eng', {
-      logger: m => { if (process.env.DEBUG_OCR) console.log(m); }
-    });
-    text = data.text || '';
-    console.log('[VERIFY-DEBUG] STAGE 4 — OCR complete. Text length:', text.length, 'chars');
-    console.log('[VERIFY-DEBUG] STAGE 4 — First 500 chars of OCR output:\n' + text.slice(0, 500).replace(/\n/g, '\\n'));
-  } catch (e) {
-    console.log('[VERIFY-DEBUG] STAGE 4 — Tesseract FAILED:', e.message);
-    throw e;
+    // ── STAGE 4: OCR execution ───────────────────────────────────────────────
+    console.log('[VERIFY-DEBUG] STAGE 4 — starting Tesseract OCR...');
+    try {
+      const { data } = await Tesseract.recognize(imageBuffer, 'eng', {
+        logger: m => { if (process.env.DEBUG_OCR) console.log(m); }
+      });
+      text = data.text || '';
+      console.log('[VERIFY-DEBUG] STAGE 4 — OCR complete. Text length:', text.length, 'chars');
+      console.log('[VERIFY-DEBUG] STAGE 4 — First 500 chars of OCR output:\n' + text.slice(0, 500).replace(/\n/g, '\\n'));
+    } catch (e) {
+      console.log('[VERIFY-DEBUG] STAGE 4 — Tesseract FAILED:', e.message);
+      throw e;
+    }
   }
 
   if (process.env.DEBUG_OCR) {
@@ -282,7 +335,7 @@ export async function runOCR(file) {
 
   // === SECOND PASS (HEADER REGION) ===
   // If still missing critical IDs, crop header region (top ~35%), apply stronger binarization and re-run OCR with restricted whitelist.
-  if (rollNumber === 'Unknown' || enrollmentNumber === 'Unknown' || serialNumber === 'Unknown') {
+  if (!skipOCR && (rollNumber === 'Unknown' || enrollmentNumber === 'Unknown' || serialNumber === 'Unknown')) {
     try {
       const meta = await sharp(imageBuffer).metadata();
       if (meta && meta.width && meta.height) {

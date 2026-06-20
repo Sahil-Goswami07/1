@@ -18,7 +18,8 @@ MONGO_URI = os.environ.get('MONGO_URI','mongodb://localhost:27017/eduauth')
 DB_NAME = os.environ.get('DB_NAME')
 client = MongoClient(MONGO_URI)
 if DB_NAME is None:
-    DB_NAME = client.get_default_database().name if client.get_default_database() else 'eduauth'
+    default_db = client.get_default_database()
+    DB_NAME = default_db.name if default_db is not None else 'eduauth'
 
 db = client[DB_NAME]
 certs_col = db['certificates']
@@ -53,7 +54,13 @@ for c in certs:
         'issueYear': issueYear,
         'certNoLength': len(certNo),
         'nameLength': nameLen,
-        'rollPatternScore': rollPatternScore
+        'rollPatternScore': rollPatternScore,
+        'logoSimilarity': 1.0,
+        'sealSimilarity': 1.0,
+        'metadataRisk': 0.0,
+        'tamperingScore': 0.0,
+        'layoutSimilarity': 1.0,
+        'qrScore': 1.0
     })
 
 df = pd.DataFrame(rows)
@@ -62,7 +69,7 @@ if df['marksPercent'].isna().all():
 else:
     df['marksPercent'] = df['marksPercent'].fillna(df['marksPercent'].median())
 
-X = df[['marksPercent','issueYear','certNoLength','nameLength','rollPatternScore']].astype(float).values
+X = df[['marksPercent','issueYear','certNoLength','nameLength','rollPatternScore','logoSimilarity','sealSimilarity','metadataRisk','tamperingScore','layoutSimilarity','qrScore']].astype(float).values
 # Normalize each feature (min-max) and store stats
 mins = X.min(axis=0)
 maxs = X.max(axis=0)
@@ -81,9 +88,9 @@ model.compile(optimizer='adam', loss='mse')
 model.fit(Xn, Xn, epochs=30, batch_size=16, verbose=0)
 
 # Save model + normalization stats
-os.makedirs(os.path.join('Backend','ml'), exist_ok=True)
-model_path = os.path.join('Backend','ml','model.h5')
+script_dir = os.path.dirname(os.path.abspath(__file__))
+model_path = os.path.join(script_dir, 'model.h5')
 model.save(model_path)
-np.save(os.path.join('Backend','ml','norm_mins.npy'), mins)
-np.save(os.path.join('Backend','ml','norm_maxs.npy'), maxs)
+np.save(os.path.join(script_dir, 'norm_mins.npy'), mins)
+np.save(os.path.join(script_dir, 'norm_maxs.npy'), maxs)
 print(json.dumps({'ok':True,'samples':len(X),'saved':model_path}))
