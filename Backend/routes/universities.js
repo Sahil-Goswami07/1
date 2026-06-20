@@ -1,8 +1,27 @@
 import express from 'express';
-import { listUniversities, approveUniversity, deleteUniversity, analytics } from '../controllers/universityController.js';
+import { 
+  listUniversities, 
+  approveUniversity, 
+  deleteUniversity, 
+  analytics, 
+  getUniversityProfile, 
+  updateUniversityProfile 
+} from '../controllers/universityController.js';
 import { authenticate, authorize } from '../middlewares/authMiddleware.js';
 
 const router = express.Router();
+
+import fileUpload from 'express-fileupload';
+
+const fileUploadMiddleware = fileUpload({
+  useTempFiles: true,
+  tempFileDir: './Backend/tmp',
+  createParentPath: true,
+  limits: { fileSize: 10 * 1024 * 1024 }
+});
+
+router.get('/profile', authenticate, authorize('universityAdmin'), getUniversityProfile);
+router.put('/profile', authenticate, authorize('universityAdmin'), fileUploadMiddleware, updateUniversityProfile);
 
 router.get('/', authenticate, authorize('superAdmin'), listUniversities);
 router.post('/:id/approve', authenticate, authorize('superAdmin'), approveUniversity);

@@ -8,18 +8,22 @@
  *  4. Score each field deterministically (roll, year, marks, name)
  *  5. Return a structured result with per-field breakdown
  *
- * Removed: ML anomaly scoring, blockchain references.
- * Kept:    OCR + strict deterministic matching.
+ * Kept: OCR + strict deterministic matching + Image Forensics + ML Anomaly.
  */
 
 import Certificate        from '../models/Certificate.js';
+import Student            from '../models/Student.js';
 import VerificationLog    from '../models/VerificationLog.js';
+import University         from '../models/University.js';
 import { runOCR }         from '../services/ocr.js';
 import { extractWithGemini } from '../services/geminiOcr.js';
 import fileUpload         from 'express-fileupload';
 import { SCORING, POLICY } from '../config/scoring.js';
 import { nameSimilarity } from '../utils/textNormalize.js';
 import { validateRules }  from '../utils/ruleValidator.js';
+import { buildFeatureVector, scoreAnomaly } from '../services/mlAnomaly.js';
+import { runImageForensics } from '../services/imageForensics.js';
+import mongoose from 'mongoose';
 
 // Middleware for optional file upload (used only on this route)
 export const verifyFileMiddleware = fileUpload({
@@ -47,6 +51,7 @@ export async function verifyCertificate(req, res) {
     console.log('[VERIFY-DEBUG] STAGE 0 — req.body values:', {
       certNo:          req.body?.certNo,
       rollNo:          req.body?.rollNo,
+      enrollmentNo:    req.body?.enrollmentNo,
       marks:           req.body?.marks,
       graduationYear:  req.body?.graduationYear,
     });
@@ -55,7 +60,8 @@ export async function verifyCertificate(req, res) {
     console.log('[VERIFY-DEBUG] STAGE 0 — req.files.certificate present?', !!(req.files && req.files.certificate));
     console.log('[VERIFY-DEBUG] STAGE 0 — req.files.file present?', !!(req.files && req.files.file));
 
-    let { certNo, rollNo, marks, graduationYear } = req.body;
+    const logId = new mongoose.Types.ObjectId();
+    let { certNo, rollNo, enrollmentNo, marks, graduationYear } = req.body;
 
     // ── Step 1: OCR ─────────────────────────────────────────────────────────
     // Accept both 'file' (new frontend key) and 'certificate' (legacy key)
@@ -79,9 +85,7 @@ export async function verifyCertificate(req, res) {
         const gemini   = await extractWithGemini(filePath, uploadedFile.mimetype);
 
         if (gemini) {
-          // When Gemini is invoked it means Tesseract struggled with this image.
           // Trust Gemini's answers for ALL fields it provides — not just Unknown ones.
-          // Tesseract's corrupted value (e.g. '23E1JCCSMASP') must be overridden.
           if (gemini.rollNumber) {
             console.log('[VERIFY-DEBUG] Gemini rollNumber:', gemini.rollNumber, '(was:', ocr.rollNumber, ')');
             ocr.rollNumber = ocr.correctedRollNumber = gemini.rollNumber;
@@ -102,21 +106,25 @@ export async function verifyCertificate(req, res) {
         }
       }
 
-
       // Infer identifiers from OCR result (Tesseract + Gemini merged)
       if (!rollNo) {
-        rollNo = ocr.correctedRollNumber !== 'Unknown'
-          ? ocr.correctedRollNumber
-          : ocr.rollNumber !== 'Unknown' ? ocr.rollNumber : undefined;
+        if (ocr.correctedRollNumber && ocr.correctedRollNumber !== 'Unknown') rollNo = ocr.correctedRollNumber;
+        else if (ocr.rollNumber && ocr.rollNumber !== 'Unknown') rollNo = ocr.rollNumber;
+      }
+      if (!enrollmentNo) {
+        if (ocr.correctedEnrollmentNumber && ocr.correctedEnrollmentNumber !== 'Unknown') enrollmentNo = ocr.correctedEnrollmentNumber;
+        else if (ocr.enrollmentNumber && ocr.enrollmentNumber !== 'Unknown') enrollmentNo = ocr.enrollmentNumber;
       }
       if (!certNo) {
-        certNo = ocr.correctedEnrollmentNumber !== 'Unknown'
-          ? ocr.correctedEnrollmentNumber
-          : ocr.enrollmentNumber !== 'Unknown' ? ocr.enrollmentNumber
-          : ocr.serialNumber !== 'Unknown' ? ocr.serialNumber : undefined;
+        if (ocr.correctedEnrollmentNumber && ocr.correctedEnrollmentNumber !== 'Unknown') certNo = ocr.correctedEnrollmentNumber;
+        else if (ocr.enrollmentNumber && ocr.enrollmentNumber !== 'Unknown') certNo = ocr.enrollmentNumber;
+        else if (ocr.serialNumber && ocr.serialNumber !== 'Unknown') {
+          certNo = ocr.serialNumber;
+          if (!req.inferredSources) req.inferredSources = [];
+          req.inferredSources.push('certNo:serialNumber');
+        }
       }
     }
-
     // ── Step 2: Normalize identifiers ───────────────────────────────────────
     if (certNo) certNo = normalizeId(certNo);
     if (rollNo) rollNo = normalizeId(rollNo);
@@ -150,6 +158,11 @@ export async function verifyCertificate(req, res) {
 
     const student = cert?.studentId ?? null;
 
+    let university = null;
+    if (cert && cert.universityId) {
+      university = await University.findById(cert.universityId);
+    }
+
     // ── Step 4: Field scoring ────────────────────────────────────────────────
     const reasons          = [];
     const fieldsMatched    = [];
@@ -167,7 +180,11 @@ export async function verifyCertificate(req, res) {
       const { weights, nameThresholds, criticalFields } = SCORING;
 
       // ── Roll number (hard-critical) ────────────────────────────────────────
-      if (student && normalizeId(student.rollNo) === rollNo) {
+      // OCR frequently confuses 'O' and '0'. We replace 'O' with '0' in both sides for resilient comparison.
+      const dbRoll = student ? normalizeId(student.rollNo).replace(/O/g, '0') : '';
+      const inputRoll = rollNo ? rollNo.replace(/O/g, '0') : '';
+
+      if (student && dbRoll === inputRoll) {
         fieldsMatched.push('rollNo');
         scoreBreakdown.rollNo = weights.rollNo;
         score += weights.rollNo;
@@ -175,6 +192,22 @@ export async function verifyCertificate(req, res) {
         fieldsMismatched.push('rollNo');
         reasons.push('Roll number mismatch');
         scoreBreakdown.rollNo = 0;
+      }
+
+      // ── Enrollment number checking (if available in DB) ───────────────────
+      if (student && student.enrollmentNo) {
+        const dbEnroll = normalizeId(student.enrollmentNo).replace(/O/g, '0');
+        const inputEnroll = enrollmentNo ? normalizeId(enrollmentNo).replace(/O/g, '0') : '';
+        if (inputEnroll && dbEnroll === inputEnroll) {
+          fieldsMatched.push('enrollmentNo');
+          if (weights.enrollmentNo) {
+            scoreBreakdown.enrollmentNo = weights.enrollmentNo;
+            score += weights.enrollmentNo;
+          }
+        } else if (inputEnroll) {
+          fieldsMismatched.push('enrollmentNo');
+          reasons.push('Enrollment number mismatch');
+        }
       }
 
       // ── Graduation year ────────────────────────────────────────────────────
@@ -297,47 +330,162 @@ export async function verifyCertificate(req, res) {
       }
     }
 
-    // ── Step 7: Log and respond ──────────────────────────────────────────────
+    // 1. Image Forensics Pipeline (Stages 1-7)
+    let logoSimilarity = 1.0;
+    let sealSimilarity = 1.0;
+    let layoutSimilarity = 1.0;
+    let metadataRisk = 0.0;
+    let tamperingScore = 0.0;
+    let qrScore = 1.0;
+    let extractedLogoPath = null;
+    let extractedSealPath = null;
+    let metadataDetails = {};
+    if (cert && uploadedFile) {
+      const forensics = await runImageForensics({
+        university,
+        file: uploadedFile,
+        certNo: cert.certNo,
+        rollNo: student ? student.rollNo : rollNo,
+        logId
+      });
+      logoSimilarity = forensics.logoSimilarity;
+      sealSimilarity = forensics.sealSimilarity;
+      layoutSimilarity = forensics.layoutSimilarity;
+      metadataRisk = forensics.metadataRisk;
+      tamperingScore = forensics.tamperingScore;
+      qrScore = forensics.qrScore;
+      extractedLogoPath = forensics.extractedLogoPath;
+      extractedSealPath = forensics.extractedSealPath;
+      metadataDetails = forensics.metadata || {};
+    }
+
+    // 2. ML anomaly scoring (using extended 11-dimensional feature vector)
+    let anomalyScore = 0; let anomalyReasons = [];
+    if (cert) {
+      const fv = buildFeatureVector({
+        cert,
+        student,
+        logoSimilarity,
+        sealSimilarity,
+        metadataRisk,
+        tamperingScore,
+        layoutSimilarity,
+        qrScore
+      });
+      try {
+        const { anomalyScore: aScore, error, missingModel } = await scoreAnomaly(fv);
+        anomalyScore = aScore || 0;
+        if (missingModel) anomalyReasons.push('Anomaly model missing (default score)');
+        if (error) {
+          console.error('[Anomaly Error Details]', error);
+          anomalyReasons.push('Anomaly scoring error');
+        }
+      } catch(e){
+        anomalyReasons.push('Anomaly scoring exception');
+      }
+    }
+
+    // 3. Combined Final Decision Logic
+    let finalStatus = status;
+    if (cert) {
+      // Hard rules or database validation mismatch
+      if (ruleResult && !ruleResult.ok) {
+        finalStatus = 'FAKE';
+      }
+      // Critical visual tampering, or complete mismatch of logo/seal/layout
+      else if (tamperingScore > 0.6 || logoSimilarity < 0.6 || sealSimilarity < 0.6 || layoutSimilarity < 0.6) {
+        finalStatus = 'FAKE';
+        reasons.push(`Tampering alert: High metadata/image forgery signals or structural mismatches found.`);
+      }
+      // Borderline parameters, missing QR verification, metadata risks, or neural anomaly flagging
+      else if (
+        anomalyScore > 0.7 ||
+        logoSimilarity < 0.75 ||
+        sealSimilarity < 0.75 ||
+        layoutSimilarity < 0.75 ||
+        metadataRisk > 0.7 ||
+        qrScore < 0.8 ||
+        finalStatus === 'partial'
+      ) {
+        finalStatus = 'SUSPICIOUS';
+        if (anomalyScore > 0.7) reasons.push(`AI Anomaly Engine: Unusually high outlier score (${Math.round(anomalyScore * 100)}%)`);
+        if (logoSimilarity < 0.75) reasons.push(`Logo matching: ${Math.round(logoSimilarity * 100)}% match (requires >=75%)`);
+        if (sealSimilarity < 0.75) reasons.push(`Seal matching: ${Math.round(sealSimilarity * 100)}% match (requires >=75%)`);
+        if (layoutSimilarity < 0.75) reasons.push(`Layout alignment: ${Math.round(layoutSimilarity * 100)}% match (requires >=75%)`);
+        if (metadataRisk > 0.7) reasons.push('Metadata flags: Suspicious editing software signature found.');
+        if (qrScore < 0.8) reasons.push('QR code mismatch: Encoded data does not match database record.');
+      }
+      // Fully verified pass
+      else if (finalStatus === 'verified') {
+        finalStatus = 'VERIFIED';
+      }
+    }
+
     const logDoc = {
+      _id: logId,
       certNo,
-      status: status.toLowerCase(),
+      status: finalStatus.toLowerCase(),
       score,
       reasons,
       fieldsMatched,
       fieldsMismatched,
       scoreBreakdown,
-      ocrName:     ocr ? ocr.candidateName : undefined,
+      ocrName: ocr ? ocr.candidateName : undefined,
       universityId: cert ? cert.universityId : undefined,
+      anomalyScore,
+      anomalyReasons: [...new Set([...anomalyReasons, ...(ruleResult && !ruleResult.ok ? ruleResult.reasons : [])])],
+      logoSimilarity: Math.round(logoSimilarity * 100),
+      sealSimilarity: Math.round(sealSimilarity * 100),
+      layoutSimilarity: Math.round(layoutSimilarity * 100),
+      tamperingScore: Math.round(tamperingScore * 100),
+      metadataRisk: Math.round(metadataRisk * 100),
+      qrScore: Math.round(qrScore * 100),
+      imageAnomalyScore: anomalyScore,
+      extractedLogoPath,
+      extractedSealPath
     };
     await VerificationLog.create(logDoc);
 
-    return res.json({
-      status,
+    res.json({
+      status: finalStatus,
+      deterministicScore: score,
+      anomalyScore,
+      anomalyReasons: logDoc.anomalyReasons,
+      imageAuthenticity: {
+        logoSimilarity: Number(logoSimilarity.toFixed(2)),
+        sealSimilarity: Number(sealSimilarity.toFixed(2)),
+        layoutSimilarity: Number(layoutSimilarity.toFixed(2)),
+        metadataRisk: Number(metadataRisk.toFixed(2)),
+        tamperingScore: Number(tamperingScore.toFixed(2)),
+        qrScore: Number(qrScore.toFixed(2)),
+        extractedLogoPath,
+        extractedSealPath,
+        metadata: metadataDetails
+      },
       score,
       reasons,
       fieldsMatched,
       fieldsMismatched,
       scoreBreakdown,
       ocr,
-      certificate: cert
-        ? {
-            certNo:      cert.certNo,
-            issueDate:   cert.issueDate,
-            marks:       cert.marksPercent,
-            universityId: cert.universityId,
-            student: student
-              ? {
-                  name:           student.name,
-                  rollNo:         student.rollNo,
-                  course:         student.course,
-                  graduationYear: student.graduationYear,
-                }
-              : null,
-          }
-        : null,
+      certificate: cert ? {
+        certNo: cert.certNo,
+        issueDate: cert.issueDate,
+        marks: cert.marksPercent,
+        universityId: cert.universityId,
+        sealImage: university ? university.sealImage : undefined,
+        logoImage: university ? university.logoImage : undefined,
+        student: student ? {
+          name: student.name,
+          rollNo: student.rollNo,
+          enrollmentNo: student.enrollmentNo,
+          course: student.course,
+          graduationYear: student.graduationYear
+        } : null
+      } : null
     });
-  } catch (err) {
-    console.error('[verifyCertificate] error:', err);
-    return res.status(500).json({ error: err.message });
+  } catch (e) {
+    console.error('[Verify Error]', e.stack || e);
+    res.status(500).json({ error: e.message, stack: e.stack });
   }
 }

@@ -1,0 +1,45 @@
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+
+# Dependencies
+node_modules/
+jspm_packages/
+web_modules/
+
+# Build and temp directories
+dist/
+dist-ssr/
+build/
+Backend/tmp/
+Backend/Backend/
+tmp/
+scratch/
+
+# Uploads and User Assets
+Backend/public/uploads/
+uploads/
+
+# Debug and Log files
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Editor and OS settings
+.vscode/
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

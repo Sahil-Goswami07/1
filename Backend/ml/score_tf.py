@@ -6,12 +6,13 @@ Input stdin JSON: {"features":[... same order ...]}
 Output: {"anomalyScore": float}
 Reconstruction error mapped to 0..1.
 """
-model_path = os.path.join('Backend','ml','model.h5')
-mins_path = os.path.join('Backend','ml','norm_mins.npy')
-maxs_path = os.path.join('Backend','ml','norm_maxs.npy')
+script_dir = os.path.dirname(os.path.abspath(__file__))
+model_path = os.path.join(script_dir, 'model.h5')
+mins_path = os.path.join(script_dir, 'norm_mins.npy')
+maxs_path = os.path.join(script_dir, 'norm_maxs.npy')
 if not os.path.exists(model_path):
-    print(json.dumps({'error':'model not found'}))
-    raise SystemExit
+    print(json.dumps({'error': f'model not found at {model_path}'}))
+    sys.exit(1)
 
 raw = sys.stdin.read()
 try:
